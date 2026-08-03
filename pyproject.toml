@@ -19,6 +19,8 @@ dependencies = [
     # would pull a large surface in for one function.
     "numpy==2.1.3",
     "pyyaml==6.0.2",
+    # architecture.md 7.5: the validator's challenge-pack store.
+    "redis==5.2.1",
 ]
 
 [project.optional-dependencies]
