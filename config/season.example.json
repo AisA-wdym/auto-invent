@@ -1,0 +1,150 @@
+{
+  "protocol_version": "AIL-3.0",
+  "season_id": "s-2026-v1",
+  "weights_version": 1,
+  "mechid": 1,
+  "sdk_pin": "10.5.0",
+
+  "taxonomy": {
+    "domains": [
+      "software_architecture",
+      "algorithms",
+      "ai_agent_architecture",
+      "memory_and_retrieval",
+      "distributed_coordination",
+      "digital_mechanism_design",
+      "data_and_model_pipelines",
+      "optimization_and_efficiency"
+    ],
+    "challenges_per_day": 8,
+    "stratification": {
+      "software_architecture": 1,
+      "algorithms": 1,
+      "ai_agent_architecture": 2,
+      "distributed_coordination": 1,
+      "memory_and_retrieval": 1,
+      "digital_mechanism_design": 1,
+      "wildcard": 1
+    },
+    "excluded_domains": [
+      "clinical_or_medical_treatment",
+      "wet_lab_chemistry_or_biology",
+      "physical_engineering_requiring_measurement",
+      "legal_or_policy",
+      "weapons_malware_or_exploits",
+      "broad_artistic_ideation",
+      "long_horizon_real_world_outcomes"
+    ]
+  },
+
+  "resource_classes": [
+    {
+      "name": "standard",
+      "memory_bytes": 8589934592,
+      "cpu_shares": 2048,
+      "pids_limit": 512,
+      "workspace_bytes": 2147483648
+    }
+  ],
+
+  "challenge_generation": {
+    "protocol_version": "CPG-1.0",
+    "candidates_per_slot": 4,
+    "dedup_lookback_days": 90,
+    "duplicate_threshold_ppm": 850000,
+    "minimum_reference_spread_ppm": 120000,
+    "generator_model_snapshots": []
+  },
+
+  "criterion_weights_ppm": {
+    "originality": 250000,
+    "value": 200000,
+    "mechanism": 150000,
+    "constraint_fit": 120000,
+    "diversity": 100000,
+    "self_selection": 80000,
+    "falsifiability": 70000,
+    "cost_reliability": 30000
+  },
+
+  "rank_weights_ppm": [400000, 250000, 150000, 120000, 80000],
+
+  "scoring": {
+    "pairwise_weight_ppm": 750000,
+    "pointwise_weight_ppm": 250000,
+    "mechanism_floor_ppm": 400000,
+    "capped_on_weak_mechanism_ppm": 500000,
+    "daily_mean_weight_ppm": 700000,
+    "daily_q25_weight_ppm": 300000,
+    "rolling_short_days": 7,
+    "rolling_long_days": 30,
+    "rolling_short_weight_ppm": 600000,
+    "rolling_long_weight_ppm": 400000,
+    "minimum_days_for_median": 7
+  },
+
+  "judging": {
+    "minimum_families": 3,
+    "family_cap_ppm": 400000,
+    "panels": [],
+    "degradation_accuracy_floor_ppm": 950000,
+    "order_swap_inconsistency_ceiling_ppm": 75000,
+    "schema_validity_floor_ppm": 990000,
+    "circuit_breaker_consecutive_failures": 3
+  },
+
+  "weight_allocation": {
+    "temperature_ppm": 100000,
+    "maximum_weight_ppm": 175000,
+    "minimum_valid_challenges": 6,
+    "burn_uid": 0,
+    "reference_floor_lab": "reference_a"
+  },
+
+  "cycle": {
+    "blocks_per_day": 7200,
+    "submission_close_offset": -600,
+    "salt_commit_offset": -450,
+    "randomness_offset": -300,
+    "pack_commit_offset": -100,
+    "reveal_offset": 0,
+    "execution_close_offset": 4200,
+    "weights_offset": 6900
+  },
+
+  "reference_labs": [
+    { "name": "reference_a", "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000" },
+    { "name": "reference_b", "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001" },
+    { "name": "reference_c", "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002" },
+    { "name": "reference_d", "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000003" }
+  ],
+
+  "providers": [],
+
+  "disclosure": {
+    "publish_after_execution_close": [
+      "challenge_pack",
+      "generation_protocol_version",
+      "miner_bundle_source",
+      "model_manifest",
+      "canonicalized_portfolios",
+      "raw_portfolios",
+      "prior_art_reports",
+      "judge_json",
+      "ab_order_results",
+      "challenge_scores",
+      "rolling_scores",
+      "rcg_receipts",
+      "hard_gate_outcomes",
+      "validator_weight_vector",
+      "bundle_lineage_and_forks"
+    ],
+    "judge_prompt_sealed_until_epoch_end": true
+  },
+
+  "signing": {
+    "registry_pubkey": "<operations public key>",
+    "owner_hotkey": "<owner hotkey address>",
+    "ineligible_uids": []
+  }
+}

@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auto-invent.ai/schemas/portfolio.json",
+  "title": "ResearchPortfolio",
+  "description": "What a laboratory returns: a ranked Top-N invention portfolio, from architecture.md section 9.2. Schema name `research_portfolio_v1`.\n\nTwo fields are numeric probabilities the miner supplies (`estimated_probability_of_value`, `self_selection.confidence`). They are permitted here because this schema describes the raw artifact as it arrives, and the raw artifact is hashed as *received bytes* rather than as a re-encoded object. The canonicalizer (section 14) converts them to integer fixed-point before anything scores or hashes a derived form, so no float ever reaches an arithmetic path that two runs must agree on.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["challenge_id", "portfolio", "self_selection"],
+  "properties": {
+    "challenge_id": { "$ref": "#/$defs/hash" },
+    "laboratory_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "research_strategy": { "type": "string", "maxLength": 8000 },
+        "search_scope": { "type": "string", "maxLength": 4000 },
+        "major_assumptions": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 1000 },
+          "maxItems": 20
+        }
+      }
+    },
+    "portfolio": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/idea" },
+      "minItems": 1,
+      "maxItems": 10
+    },
+    "portfolio_map": {
+      "description": "The laboratory's own account of how its ideas differ. Scored by the Diversity Judge against the canonicalizer's independent clustering, so a claimed difference that clustering does not find counts against it.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "idea_families": { "type": "array", "items": { "type": "string", "maxLength": 500 }, "maxItems": 10 },
+        "differences": { "type": "array", "items": { "type": "string", "maxLength": 2000 }, "maxItems": 45 }
+      }
+    },
+    "self_selection": {
+      "description": "Why the laboratory ranked its first idea first. Scored by the Self-Selection Judge (section 16.2) against which idea the panel would have picked.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["why_rank_1"],
+      "properties": {
+        "why_rank_1": { "type": "string", "minLength": 20, "maxLength": 8000 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "resource_usage_claim": {
+      "description": "The laboratory's own account of what it spent. Recorded but never trusted: section 9.2 states validators replace self-reported usage with gateway-measured usage. Kept because a claim that disagrees with measurement is itself evidence.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rcc": { "type": "integer", "minimum": 0 },
+        "search_calls": { "type": "integer", "minimum": 0 },
+        "model_calls": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "idea": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rank", "title", "core_invention", "mechanism", "why_non_obvious"],
+      "properties": {
+        "rank": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "title": { "type": "string", "minLength": 4, "maxLength": 300 },
+        "problem_reframe": { "type": "string", "maxLength": 4000 },
+        "core_invention": { "type": "string", "minLength": 50, "maxLength": 12000 },
+        "mechanism": {
+          "description": "Why the idea works. A mechanism below the section 18.4 floor caps both value and originality at 0.50 — an idea cannot score highly merely by sounding unusual.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["components", "causal_explanation"],
+          "properties": {
+            "components": {
+              "type": "array",
+              "items": { "type": "string", "maxLength": 1000 },
+              "minItems": 1,
+              "maxItems": 30
+            },
+            "information_flow": { "type": "string", "maxLength": 8000 },
+            "causal_explanation": { "type": "string", "minLength": 50, "maxLength": 12000 },
+            "feedback_loops": {
+              "type": "array",
+              "items": { "type": "string", "maxLength": 2000 },
+              "maxItems": 20
+            }
+          }
+        },
+        "nearest_prior_art": {
+          "description": "The laboratory's own prior-art comparison. Verified independently (section 15): a fabricated or inaccessible citation is a hard-gate failure, not a scoring deduction.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "material_difference"],
+            "properties": {
+              "source": { "type": "string", "maxLength": 2000 },
+              "similarity": { "type": "string", "maxLength": 1000 },
+              "material_difference": { "type": "string", "maxLength": 4000 }
+            }
+          },
+          "maxItems": 20
+        },
+        "why_non_obvious": { "type": "string", "minLength": 20, "maxLength": 8000 },
+        "expected_value": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "beneficiary": { "type": "string", "maxLength": 1000 },
+            "value_created": { "type": "string", "maxLength": 4000 },
+            "magnitude_hypothesis": { "type": "string", "maxLength": 4000 }
+          }
+        },
+        "assumptions": { "type": "array", "items": { "type": "string", "maxLength": 2000 }, "maxItems": 30 },
+        "weakest_assumption": { "type": "string", "maxLength": 4000 },
+        "failure_modes": { "type": "array", "items": { "type": "string", "maxLength": 2000 }, "maxItems": 30 },
+        "falsifiable_predictions": {
+          "description": "Discriminating predictions. Scored by the Falsifiability Judge; a deepening with no falsifiable result scores zero on that axis.",
+          "type": "array",
+          "items": { "type": "string", "maxLength": 4000 },
+          "maxItems": 20
+        },
+        "cheapest_kill_test": { "type": "string", "maxLength": 4000 },
+        "simulation_or_calculation": {
+          "description": "The one place a claim can be checked rather than judged. Artifacts are referenced by content address so a validator can re-verify the stated result.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "method": { "type": "string", "maxLength": 4000 },
+            "result": { "type": "string", "maxLength": 8000 },
+            "artifact_refs": { "type": "array", "items": { "type": "string", "maxLength": 500 }, "maxItems": 20 }
+          }
+        },
+        "development_path": { "type": "array", "items": { "type": "string", "maxLength": 2000 }, "maxItems": 20 },
+        "estimated_probability_of_value": { "type": "number", "minimum": 0, "maximum": 1 },
+        "estimated_validation_cost_rcc": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auto-invent.ai/schemas/model_manifest.json",
+  "title": "ModelManifest",
+  "description": "Every externally invoked model, declared before submission closes (architecture.md section 5.3). Model choice is open — any provider, several models in one laboratory, or one specialised custom model — but the *declaration* is closed: after the deadline a laboratory cannot change which models it calls, at which revisions, with which parameters.\n\nThis is what makes 'undeclared model use' and 'model-revision mismatch' hard gates (section 13) rather than opinions. The gateway enforces the declaration at call time; an undeclared model cannot be reached at all.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["models", "routing_config_hash"],
+  "properties": {
+    "models": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/model" },
+      "minItems": 1,
+      "maxItems": 40
+    },
+    "routing_config_hash": {
+      "description": "Content address of the routing configuration. Pinned so that which model handles which role cannot change after the deadline, even when the model set does not.",
+      "$ref": "#/$defs/hash"
+    },
+    "maximum_parallel_calls": { "type": "integer", "minimum": 1, "maximum": 128 }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alias", "provider", "role"],
+      "properties": {
+        "alias": {
+          "description": "The laboratory's internal name for this model. What its own code calls; the gateway resolves it to the declaration.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "provider": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "endpoint_id": { "type": "string", "maxLength": 200 },
+        "hf_repo": {
+          "description": "For a miner-owned model. Chutes can deploy a Hugging Face model behind an OpenAI-compatible API pinned to a revision, which is what makes a private fine-tune verifiable.",
+          "type": "string",
+          "maxLength": 200
+        },
+        "revision": {
+          "description": "A full 40-character commit SHA. Abbreviated revisions are refused: an abbreviation can become ambiguous as a repository grows, and the point of pinning is that it cannot.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "model_snapshot": {
+          "description": "For a hosted model: the fixed season snapshot. A provider that silently moves a model alias changes what every laboratory is running mid-season, which is why the snapshot rather than the alias is the identity.",
+          "type": "string",
+          "maxLength": 200
+        },
+        "parameters": {
+          "description": "Sampling parameters, pinned. Temperature is part of a laboratory's design, so changing it after the deadline would change the submission.",
+          "type": "object",
+          "additionalProperties": true
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "idea_generation",
+            "critique",
+            "prior_art",
+            "ranking",
+            "planning",
+            "synthesis",
+            "simulation",
+            "other"
+          ]
+        }
+      }
+    }
+  }
+}

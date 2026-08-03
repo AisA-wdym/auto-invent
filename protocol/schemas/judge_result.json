@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auto-invent.ai/schemas/judge_result.json",
+  "title": "JudgeResult",
+  "description": "One judge's verdict on one pairwise comparison, from architecture.md section 16.3.\n\nPairwise rather than a score, because a score invites a judge to reward fluency: asked 'is this good, 1-10?' a model rates confident prose highly, while asked 'which of these two is better on mechanism?' it must find a discriminating difference. Section 18.3 makes pairwise the primary signal at 0.75 weight and keeps anchored pointwise at 0.25 as a diagnostic — the pointwise anchor is what reveals a field in which the relative winner is still poor.\n\n`abstain` is a first-class outcome. A judge forced to choose when it cannot discriminate contributes noise that looks like signal, and section 19 measures order-swap inconsistency precisely to detect that.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["criterion", "comparison", "winner", "abstain"],
+  "properties": {
+    "criterion": {
+      "type": "string",
+      "enum": [
+        "originality",
+        "value",
+        "mechanism",
+        "constraint_fit",
+        "diversity",
+        "self_selection",
+        "falsifiability",
+        "cost_reliability"
+      ]
+    },
+    "comparison": {
+      "description": "Blinded identifiers. The judge never learns which miner produced either side; section 14 strips identity before this stage.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_a", "candidate_b"],
+      "properties": {
+        "candidate_a": { "type": "string", "maxLength": 100 },
+        "candidate_b": { "type": "string", "maxLength": 100 }
+      }
+    },
+    "winner": { "type": "string", "enum": ["A", "B", "tie"] },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "a_strengths": { "type": "array", "items": { "type": "string", "maxLength": 2000 }, "maxItems": 20 },
+    "b_strengths": { "type": "array", "items": { "type": "string", "maxLength": 2000 }, "maxItems": 20 },
+    "a_failures": { "type": "array", "items": { "type": "string", "maxLength": 2000 }, "maxItems": 20 },
+    "b_failures": { "type": "array", "items": { "type": "string", "maxLength": 2000 }, "maxItems": 20 },
+    "decisive_reason": {
+      "description": "Required in practice by the calibration controls: a verdict whose decisive reason does not survive an order swap is the signature of position bias rather than judgement.",
+      "type": "string",
+      "maxLength": 4000
+    },
+    "abstain": { "type": "boolean" }
+  }
+}

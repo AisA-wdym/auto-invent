@@ -1,0 +1,322 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auto-invent.ai/schemas/season_config.json",
+  "title": "SeasonConfig",
+  "description": "The public protocol the owner defines (architecture.md section 3.3): taxonomy, resource classes, hard-gate rules, scoring formula, judge requirements, disclosure rules and version pins. Signed, hash-anchored on chain, and the only artifact a validator is permitted to derive rules from.\n\nThe owner defines this and nothing else. It contains no challenges: section 3.3 is explicit that the owner does not create the daily validation questions and does not grade answers. Anything resembling problem content in this file would reintroduce the owner as a trusted party.\n\n## Every ratio is an integer in parts-per-million\n\nNo field in this schema is typed `number`. A float serialises differently on two hosts, and this document is hashed and anchored — so a decimal here makes the anchor comparison fail for a reason nobody can locate. Writing ppm integers in the schema itself removes the conversion layer entirely, rather than converting decimals at load and hoping every reader converts the same way. The cost is readability: 250000 rather than 0.25. Each description states the decimal it means.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "season_id",
+    "weights_version",
+    "mechid",
+    "sdk_pin",
+    "taxonomy",
+    "resource_classes",
+    "challenge_generation",
+    "criterion_weights_ppm",
+    "rank_weights_ppm",
+    "scoring",
+    "judging",
+    "weight_allocation",
+    "cycle",
+    "reference_labs",
+    "signing"
+  ],
+  "properties": {
+    "protocol_version": { "type": "string", "const": "AIL-3.0" },
+    "season_id": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "weights_version": {
+      "description": "The on-chain version key. Bumped whenever the scoring formula changes, so a weight vector can be attributed to the rules that produced it.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "mechid": {
+      "description": "Mechanism identifier. Passed on every weight and metagraph call; omitting it must raise before any network call.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "sdk_pin": { "type": "string", "maxLength": 50 },
+    "taxonomy": {
+      "description": "The active domain set and the per-day stratification (section 7.2). V1 is restricted to domains an LLM panel can inspect without a physical laboratory.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domains", "challenges_per_day", "stratification"],
+      "properties": {
+        "domains": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": 32 },
+        "challenges_per_day": { "type": "integer", "minimum": 1, "maximum": 64 },
+        "stratification": {
+          "description": "How many challenges each domain contributes per day. Must sum to `challenges_per_day`; a wildcard slot is expressed as the reserved domain name `wildcard`.",
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "excluded_domains": {
+          "description": "Section 2's V1 exclusions, named rather than merely omitted, so the safety filter has a list to check against.",
+          "type": "array",
+          "items": { "type": "string" },
+          "maxItems": 32
+        }
+      }
+    },
+    "resource_classes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "memory_bytes", "cpu_shares", "pids_limit"],
+        "properties": {
+          "name": { "type": "string", "maxLength": 50 },
+          "memory_bytes": { "type": "integer", "minimum": 1 },
+          "cpu_shares": { "type": "integer", "minimum": 1 },
+          "pids_limit": { "type": "integer", "minimum": 1 },
+          "workspace_bytes": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "challenge_generation": {
+      "description": "Section 7.4's pipeline parameters. The discrimination probe is the load-bearing one: it is what stops a validator producing problems nobody can be scored on.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol_version", "candidates_per_slot", "dedup_lookback_days", "duplicate_threshold_ppm"],
+      "properties": {
+        "protocol_version": { "type": "string", "maxLength": 50 },
+        "candidates_per_slot": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "dedup_lookback_days": { "type": "integer", "minimum": 1 },
+        "duplicate_threshold_ppm": {
+          "description": "Similarity at or above which a candidate is a duplicate. 850000 = 0.85.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "minimum_reference_spread_ppm": {
+          "description": "Reference labs must disagree by at least this much, or the problem does not discriminate. Section 7.4 step 5.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "generator_model_snapshots": { "type": "array", "items": { "type": "string" }, "maxItems": 10 }
+      }
+    },
+    "criterion_weights_ppm": {
+      "description": "Section 18.2. Must sum to 1000000.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "originality",
+        "value",
+        "mechanism",
+        "constraint_fit",
+        "diversity",
+        "self_selection",
+        "falsifiability",
+        "cost_reliability"
+      ],
+      "properties": {
+        "originality": { "description": "25%", "$ref": "#/$defs/ppm" },
+        "value": { "description": "20%", "$ref": "#/$defs/ppm" },
+        "mechanism": { "description": "15%", "$ref": "#/$defs/ppm" },
+        "constraint_fit": { "description": "12%", "$ref": "#/$defs/ppm" },
+        "diversity": { "description": "10%", "$ref": "#/$defs/ppm" },
+        "self_selection": { "description": "8%", "$ref": "#/$defs/ppm" },
+        "falsifiability": { "description": "7%", "$ref": "#/$defs/ppm" },
+        "cost_reliability": { "description": "3%", "$ref": "#/$defs/ppm" }
+      }
+    },
+    "rank_weights_ppm": {
+      "description": "Section 18.1's per-idea weighting: 0.40, 0.25, 0.15, 0.12, 0.08. Ordered by rank, and must sum to 1000000. Length fixes the scored portfolio size.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/ppm" },
+      "minItems": 1,
+      "maxItems": 10
+    },
+    "scoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pairwise_weight_ppm",
+        "pointwise_weight_ppm",
+        "mechanism_floor_ppm",
+        "capped_on_weak_mechanism_ppm",
+        "daily_mean_weight_ppm",
+        "daily_q25_weight_ppm",
+        "rolling_short_days",
+        "rolling_long_days",
+        "rolling_short_weight_ppm",
+        "rolling_long_weight_ppm",
+        "minimum_days_for_median"
+      ],
+      "properties": {
+        "pairwise_weight_ppm": { "description": "Section 18.3, 0.75. Pairwise is the primary signal.", "$ref": "#/$defs/ppm" },
+        "pointwise_weight_ppm": { "description": "0.25. Diagnostic anchoring: it reveals a weak field whose relative winner is still poor.", "$ref": "#/$defs/ppm" },
+        "mechanism_floor_ppm": { "description": "Section 18.4, 0.40. Below this, value and originality are capped.", "$ref": "#/$defs/ppm" },
+        "capped_on_weak_mechanism_ppm": { "description": "0.50. An idea cannot score highly merely by sounding unusual.", "$ref": "#/$defs/ppm" },
+        "daily_mean_weight_ppm": { "description": "Section 18.5, 0.70.", "$ref": "#/$defs/ppm" },
+        "daily_q25_weight_ppm": { "description": "0.30. The lower quartile penalises a laboratory brilliant on one problem and failing the rest.", "$ref": "#/$defs/ppm" },
+        "rolling_short_days": { "description": "Section 18.6, 7.", "type": "integer", "minimum": 1 },
+        "rolling_long_days": { "description": "30.", "type": "integer", "minimum": 1 },
+        "rolling_short_weight_ppm": { "description": "0.60.", "$ref": "#/$defs/ppm" },
+        "rolling_long_weight_ppm": { "description": "0.40.", "$ref": "#/$defs/ppm" },
+        "minimum_days_for_median": {
+          "description": "Below this many valid days, the rolling score is the plain mean. Section 18.6 states there is no credibility multiplier suppressing new miners, so this must not act as one: it selects an estimator, it does not scale a score.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "judging": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimum_families",
+        "family_cap_ppm",
+        "panels",
+        "degradation_accuracy_floor_ppm",
+        "order_swap_inconsistency_ceiling_ppm",
+        "schema_validity_floor_ppm",
+        "circuit_breaker_consecutive_failures"
+      ],
+      "properties": {
+        "minimum_families": { "description": "Section 16.1: at least three. Two snapshots of one family are one family.", "type": "integer", "minimum": 3 },
+        "family_cap_ppm": { "description": "400000 = 40%. No single provider family may control more of a semantic criterion.", "$ref": "#/$defs/ppm" },
+        "panels": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["criterion", "judges"],
+            "properties": {
+              "criterion": { "type": "string" },
+              "judges": {
+                "type": "array",
+                "minItems": 3,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["family", "provider", "model_snapshot"],
+                  "properties": {
+                    "family": { "type": "string", "maxLength": 50 },
+                    "provider": { "type": "string", "maxLength": 50 },
+                    "model_snapshot": { "type": "string", "maxLength": 200 }
+                  }
+                }
+              },
+              "reliability_floor_ppm": { "$ref": "#/$defs/ppm" }
+            }
+          }
+        },
+        "degradation_accuracy_floor_ppm": { "description": "Section 19: 950000 = 95%. Below this a judge is removed from the panel.", "$ref": "#/$defs/ppm" },
+        "order_swap_inconsistency_ceiling_ppm": { "description": "Section 27: 75000 = 7.5%.", "$ref": "#/$defs/ppm" },
+        "schema_validity_floor_ppm": { "description": "990000 = 99%.", "$ref": "#/$defs/ppm" },
+        "circuit_breaker_consecutive_failures": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "weight_allocation": {
+      "description": "Section 20. Softmax rather than proportional, so the gap between a strong and a mediocre laboratory matters more than their ratio.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["temperature_ppm", "maximum_weight_ppm", "minimum_valid_challenges", "burn_uid"],
+      "properties": {
+        "temperature_ppm": { "description": "Section 20.2: tau in 0.08-0.12, so 80000-120000.", "$ref": "#/$defs/ppm" },
+        "maximum_weight_ppm": { "description": "Section 20.3: 150000-200000. Overflow is redistributed, which encourages multiple lab architectures over one permanent winner.", "$ref": "#/$defs/ppm" },
+        "minimum_valid_challenges": {
+          "description": "Section 20.1. Being best among a handful of results is not qualification.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "burn_uid": {
+          "description": "Section 20.4: if no miner beats the reference floor, 100% of weight goes here. Paying nobody is a valid outcome and must be expressible.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "reference_floor_lab": {
+          "description": "Which reference lab sets the qualification floor. Section 25: Reference A is the direct frontier-model baseline, so it is part of the reward mechanism rather than a demonstration.",
+          "type": "string",
+          "maxLength": 50
+        }
+      }
+    },
+    "cycle": {
+      "description": "Section 21's daily schedule, as block offsets. Expressed in blocks because section 21 requires the cycle be block-aligned rather than dependent only on wall clock: a validator whose clock runs fast would otherwise commit its challenge pack against a different randomness than its peers.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blocks_per_day", "submission_close_offset", "salt_commit_offset", "randomness_offset", "pack_commit_offset", "reveal_offset", "execution_close_offset", "weights_offset"],
+      "properties": {
+        "blocks_per_day": { "type": "integer", "minimum": 1 },
+        "submission_close_offset": { "description": "Negative offsets precede T0. Section 21: T-2h.", "type": "integer" },
+        "salt_commit_offset": { "description": "T-90m.", "type": "integer" },
+        "randomness_offset": { "description": "T-60m, post-deadline block randomness fixed.", "type": "integer" },
+        "pack_commit_offset": { "description": "T-20m, challenge pack hash committed.", "type": "integer" },
+        "reveal_offset": { "description": "T0, validator-only bundle reveal.", "type": "integer" },
+        "execution_close_offset": { "description": "T+14h.", "type": "integer" },
+        "weights_offset": { "description": "T+23h.", "type": "integer" }
+      }
+    },
+    "reference_labs": {
+      "description": "Section 25's four bundles, by digest. Pinned because Reference A is the qualification floor: a floor that could change without a rules change would silently move every miner's eligibility.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "container_digest"],
+        "properties": {
+          "name": { "type": "string", "maxLength": 50 },
+          "container_digest": { "$ref": "#/$defs/hash" }
+        }
+      }
+    },
+    "providers": {
+      "description": "Allowed providers and their RCC prices. A model with no price cannot be served: an unpriced call is a call that is billed to nobody.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "rcc_per_1k_in", "rcc_per_1k_out"],
+        "properties": {
+          "name": { "type": "string", "maxLength": 100 },
+          "rcc_per_1k_in": { "type": "integer", "minimum": 0 },
+          "rcc_per_1k_out": { "type": "integer", "minimum": 0 },
+          "rcc_per_search": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "disclosure": {
+      "description": "Section 22. What is published after execution closes, and what stays sealed.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "publish_after_execution_close": { "type": "array", "items": { "type": "string" }, "maxItems": 40 },
+        "judge_prompt_sealed_until_epoch_end": {
+          "description": "Section 22: the detailed judge prompt may remain sealed to reduce immediate prompt overfitting. Its hash is committed at the start regardless, so it cannot be changed while sealed.",
+          "type": "boolean"
+        }
+      }
+    },
+    "signing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registry_pubkey", "owner_hotkey"],
+      "properties": {
+        "registry_pubkey": { "type": "string", "maxLength": 200 },
+        "owner_hotkey": { "type": "string", "maxLength": 100 },
+        "ineligible_uids": {
+          "description": "Section 23: owner-linked miner UIDs should be ineligible. Declared here so the exclusion is public and auditable rather than an operational habit.",
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "maxItems": 256
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "ppm": {
+      "description": "Parts per million. 1000000 = 1.0.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000
+    }
+  }
+}

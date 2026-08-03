@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auto-invent.ai/schemas/execution_receipt.json",
+  "title": "ExecutionReceipt",
+  "description": "The gateway's signed record of one laboratory's external calls (architecture.md section 3.4, section 22).\n\nHash-chained: each entry commits to the previous one, so a receipt cannot be removed or reordered after the fact without breaking every link after it. That is what makes 'budget exceeded' and 'unauthorized endpoint' hard gates (section 13) provable rather than asserted, and what makes execution-receipt reconciliation a 100% measurement gate (section 27).\n\nRequest and response bodies are recorded as hashes, never as content. The gateway must be able to prove what was asked without becoming an archive of every prompt a miner ever wrote.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "miner_hotkey",
+    "bundle_digest",
+    "challenge_id",
+    "validator_hotkey",
+    "calls",
+    "totals",
+    "chain_head",
+    "signature"
+  ],
+  "properties": {
+    "run_id": { "type": "string", "maxLength": 200 },
+    "miner_hotkey": { "type": "string", "maxLength": 100 },
+    "bundle_digest": { "$ref": "#/$defs/hash" },
+    "challenge_id": { "$ref": "#/$defs/hash" },
+    "validator_hotkey": { "type": "string", "maxLength": 100 },
+    "calls": { "type": "array", "items": { "$ref": "#/$defs/call" }, "maxItems": 10000 },
+    "totals": {
+      "description": "Gateway-measured, never miner-reported. Section 9.2: validators replace self-reported usage with measured usage.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rcc", "model_calls", "search_calls"],
+      "properties": {
+        "rcc": { "type": "integer", "minimum": 0 },
+        "model_calls": { "type": "integer", "minimum": 0 },
+        "search_calls": { "type": "integer", "minimum": 0 },
+        "tokens_in": { "type": "integer", "minimum": 0 },
+        "tokens_out": { "type": "integer", "minimum": 0 },
+        "wall_time_seconds": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "chain_head": {
+      "description": "Hash over the final call, and therefore over every call before it.",
+      "$ref": "#/$defs/hash"
+    },
+    "signature": { "type": "string", "minLength": 1, "maxLength": 500 }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "hashOrGenesis": {
+      "description": "The previous link, or the genesis marker for the first call.",
+      "type": "string",
+      "pattern": "^(sha256:[0-9a-f]{64}|genesis)$"
+    },
+    "call": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seq", "tool", "provider", "request_hash", "response_hash", "rcc", "previous"],
+      "properties": {
+        "seq": { "type": "integer", "minimum": 0 },
+        "tool": { "type": "string", "enum": ["llm", "search", "sim", "embedding", "code"] },
+        "provider": { "type": "string", "maxLength": 100 },
+        "model": { "type": "string", "maxLength": 200 },
+        "revision": { "type": "string", "maxLength": 100 },
+        "request_hash": { "$ref": "#/$defs/hash" },
+        "response_hash": { "$ref": "#/$defs/hash" },
+        "rcc": { "type": "integer", "minimum": 0 },
+        "tokens_in": { "type": "integer", "minimum": 0 },
+        "tokens_out": { "type": "integer", "minimum": 0 },
+        "attempts": {
+          "description": "Attempts that may have consumed provider budget, including failures. A retry storm must not be free.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "previous": { "$ref": "#/$defs/hashOrGenesis" }
+      }
+    }
+  }
+}
