@@ -15,7 +15,8 @@
     "totals",
     "chain_head",
     "signature",
-    "credential_owner"
+    "credential_owner",
+    "purpose"
   ],
   "properties": {
     "run_id": {
@@ -89,7 +90,7 @@
       "maxLength": 500
     },
     "credential_owner": {
-      "description": "Whose credential funded these calls. Always the miner for a laboratory run. Recorded because the miner-facing and validator-facing credential paths must never mix: a validator billing its own judging to a miner's key would make the equal-budget guarantee a fiction and could drain a rival's balance at will. An unexpected value here is an incident, not a label.",
+      "description": "Whose OpenRouter account funded these calls. Recorded on every receipt because the two accounts are the only thing separating miner research from validator judging -- and with a single provider surface, a swapped key succeeds and silently bills the wrong party rather than failing on the first request.\n\nThis field is what makes that detectable: because both accounts report usage in the same format, per-account totals can be reconciled against provider-reported usage (section 27, 100%). A call billed to the wrong account is an incident, and it is the one defect the API itself will not surface.",
       "type": "string",
       "enum": [
         "miner",
@@ -114,6 +115,19 @@
           "minimum": 0
         }
       }
+    },
+    "purpose": {
+      "description": "What the call was for. Purpose selects the credential (section 3.4.4 point 2), so a research call cannot reach the validator resolver and a judging call cannot reach the miner resolver. Recorded so the selection is auditable after the fact, not merely asserted in code.",
+      "type": "string",
+      "enum": [
+        "research",
+        "search",
+        "simulation",
+        "challenge_generation",
+        "critique",
+        "judging",
+        "prior_art"
+      ]
     }
   },
   "$defs": {

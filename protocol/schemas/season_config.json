@@ -179,8 +179,10 @@
             "required": [
               "family",
               "provider",
+              "model_slug",
               "model_snapshot",
-              "slots"
+              "slots",
+              "critic_family"
             ],
             "properties": {
               "family": {
@@ -188,10 +190,10 @@
                 "maxLength": 50
               },
               "provider": {
+                "description": "Always OpenRouter. Kept as a field rather than omitted so a future second surface is a schema change rather than a silent assumption.",
                 "type": "string",
                 "enum": [
-                  "anthropic",
-                  "openai"
+                  "openrouter"
                 ]
               },
               "model_snapshot": {
@@ -206,6 +208,12 @@
                 "description": "Which family reviews this one's output. Must not be the family itself: same-family critique is close to self-review, since a model shares its generator's blind spots and rates its own family's output as well-formed. Crossing them is the only version of the check that finds an ambiguity the writer could not see.",
                 "type": "string",
                 "maxLength": 50
+              },
+              "model_slug": {
+                "description": "The OpenRouter route, e.g. `openai/gpt-5`. `model_snapshot` pins which version of it.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
               }
             }
           }
@@ -406,19 +414,28 @@
                   "required": [
                     "family",
                     "provider",
+                    "model_slug",
                     "model_snapshot"
                   ],
                   "properties": {
                     "family": {
+                      "description": "Who trained the model behind the route, not the aggregator. Every judge is reached through OpenRouter, so reading 'provider' as the family would make the 40% cap vacuous: three routes to three Anthropic snapshots is one family and violates the cap however many distinct slugs it uses. The cap is evaluated on this field, which is why it is required rather than derived from the slug.",
                       "type": "string",
                       "maxLength": 50
                     },
                     "provider": {
                       "type": "string",
-                      "maxLength": 50
+                      "enum": [
+                        "openrouter"
+                      ]
                     },
                     "model_snapshot": {
                       "type": "string",
+                      "maxLength": 200
+                    },
+                    "model_slug": {
+                      "type": "string",
+                      "minLength": 1,
                       "maxLength": 200
                     }
                   }
@@ -556,30 +573,31 @@
       }
     },
     "providers": {
-      "description": "The credential surfaces, and which side funds each. The two never mix: a validator that could bill judging to a miner's credential would make the equal-budget guarantee a fiction. Miner calls go through OpenRouter on the miner's own key; validator calls go direct to Anthropic and OpenAI on the validator's own.",
+      "description": "One provider surface, two accounts. Every model call in the subnet goes through OpenRouter; miners spend their own key and validators spend theirs.\n\nThe separation is by *account*, not by provider, and section 3.4.4 explains why that now has to be enforced in code: with one provider a swapped key succeeds and silently bills the wrong party, where two providers would have failed on the first request.",
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "miner_facing",
-        "validator_facing"
+        "surface",
+        "miner_pricing",
+        "validator_purposes"
       ],
       "properties": {
-        "miner_facing": {
+        "surface": {
+          "type": "string",
+          "enum": [
+            "openrouter"
+          ]
+        },
+        "miner_pricing": {
+          "description": "RCC per unit of miner-funded usage. What the equal ceiling is denominated in.",
           "type": "object",
           "additionalProperties": false,
           "required": [
-            "provider",
             "rcc_per_1k_in",
             "rcc_per_1k_out",
             "rcc_per_search"
           ],
           "properties": {
-            "provider": {
-              "type": "string",
-              "enum": [
-                "openrouter"
-              ]
-            },
             "rcc_per_1k_in": {
               "type": "integer",
               "minimum": 0
@@ -603,39 +621,18 @@
             }
           }
         },
-        "validator_facing": {
+        "validator_purposes": {
+          "description": "What the validator's own key may be spent on. Purpose selects the credential (section 3.4.4 point 2), so this list is what a research call is checked against and refused by -- not documentation.",
           "type": "array",
           "minItems": 1,
           "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "provider",
-              "purpose"
-            ],
-            "properties": {
-              "provider": {
-                "type": "string",
-                "enum": [
-                  "anthropic",
-                  "openai",
-                  "google"
-                ]
-              },
-              "purpose": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "enum": [
-                    "challenge_generation",
-                    "critique",
-                    "judging",
-                    "prior_art"
-                  ]
-                },
-                "minItems": 1
-              }
-            }
+            "type": "string",
+            "enum": [
+              "challenge_generation",
+              "critique",
+              "judging",
+              "prior_art"
+            ]
           }
         }
       }

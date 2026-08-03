@@ -50,7 +50,7 @@
           "maxLength": 100
         },
         "provider": {
-          "description": "The provider surface. OpenRouter for every miner-facing call; the enum is closed so a laboratory cannot name a route the gateway has no adapter for.",
+          "description": "The provider surface. OpenRouter for every call in the subnet, miner and validator alike; the enum is closed so a laboratory cannot name a route the gateway has no adapter for. Separation between the two sides is by account, not by provider.",
           "type": "string",
           "enum": [
             "openrouter"

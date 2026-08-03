@@ -28,10 +28,11 @@ The existing foundational principles remain unchanged: miners submit the laborat
 miners fund its inference and research costs, validators control execution, model versions
 are locked, and validation remains automated.
 
-Two operational decisions are fixed in this revision. Miners reach every model and web
-search through **OpenRouter**, using **their own credential**, which the gateway holds and
-the sandbox never sees. Validators generate challenges and run judge panels on **their own
-Anthropic and OpenAI credentials**, and the two credential paths never mix. 
+One provider surface, two accounts. **Every model call in the subnet goes through
+OpenRouter** — miner research, challenge generation, judging and prior-art retrieval alike.
+Miners spend **their own OpenRouter key**, which the gateway holds and the sandbox never
+sees; validators spend **their own OpenRouter key**. Same provider, separate accounts, and
+the two must never be confused for one another. 
 
 ---
 
@@ -208,15 +209,43 @@ cannot verify a cap from the outside, so this is a published expectation with a
 corresponding measurement: receipt totals are reconciled against provider-reported usage
 (section 27), and a discrepancy is an incident rather than a rounding difference.
 
-### 3.4.3 Validator-funded calls use the validator's own credentials
+### 3.4.3 Validator-funded calls use the validator's own OpenRouter key
 
-Challenge generation, judging and prior-art retrieval are **validator** costs (section
-5.4) and use the **validator's own** Anthropic and OpenAI credentials. They never touch a
-miner's key.
+Challenge generation, critique, judging and prior-art retrieval are **validator** costs
+(section 5.4), and they go through OpenRouter on the **validator's own** key. Same provider
+as the miners, a different account.
 
-The separation is strict and it is what keeps the accounting honest: if a validator could
-bill its own judging to a miner's credential, the equal-budget guarantee would be a
-fiction, and a validator could exhaust a competitor-sponsored miner's balance at will.
+One surface everywhere buys a real simplification: one adapter, one metering format, one
+allowlist, one credential type, and an operator provisions one API key rather than three.
+
+### 3.4.4 The credential separation must be enforced, not assumed
+
+A miner's key and a validator's key must never be used for each other's work. The reason is
+unchanged: a validator that could bill its own judging to a miner's credential would make
+the equal-budget guarantee a fiction and could exhaust a rival-sponsored miner's balance at
+will.
+
+What *has* changed is that this is no longer enforced for free. When the two sides used
+different providers, a swapped credential failed immediately — wrong endpoint, wrong request
+shape, wrong error. With one provider, **a swapped key works.** It authenticates, it
+returns a completion, and it silently bills the wrong party. Nothing surfaces until someone
+reconciles an invoice.
+
+So the invariant becomes explicit, in three parts:
+
+1. **Two resolvers, not one keyed store.** The RCG holds the miner credential and the
+   validator credential behind distinct objects with distinct types. There is no lookup that
+   takes an owner as a parameter, because a parameter can be passed the wrong value.
+2. **Every call declares its purpose, and purpose selects the credential.** A research call
+   cannot reach the validator resolver; a judging call cannot reach the miner resolver.
+   Mismatch raises before the request is built, not after it succeeds.
+3. **Every receipt records `credential_owner`, and it is reconciled.** Section 27 requires
+   100% receipt reconciliation against provider-reported usage. Because both accounts now
+   report in the same format, a call billed to the wrong account is *detectable* by
+   comparing per-account totals — which is the only check that catches a defect the API
+   itself will not.
+
+Point 3 is the one that makes the other two auditable rather than merely intended.
 
 ---
 
@@ -562,7 +591,8 @@ stratified across the taxonomy:
 ## 7.2.1 Two generators, deliberately
 
 The twenty problems are produced by **two independent generator families**: ten by GPT and
-ten by Claude. This is not redundancy, and it is not a hedge against an outage.
+ten by Claude, both reached through the validator's own OpenRouter key. This is not
+redundancy, and it is not a hedge against an outage.
 
 A single generator has a *house style*. It reaches for the same problem shapes, the same
 constraint patterns, the same framings — and a laboratory tuned to that style scores well
@@ -1041,14 +1071,14 @@ This subnet uses model graders, but it narrows their responsibilities and contin
 
 ## 16.1 Judge families
 
-At least three different model families are required, and they run on the **validator's own**
-Anthropic and OpenAI credentials — never on a miner's.
+At least three different model families are required, and they run on the **validator's own
+OpenRouter key** — never on a miner's.
 
-Composition:
+Composition, by OpenRouter route:
 
-* **Claude judge** (Anthropic, direct);
-* **GPT judge** (OpenAI, direct);
-* a third family for the tie-breaking third opinion — Gemini, or an open-weight judge.
+* **Claude judge** — `anthropic/...`;
+* **GPT judge** — `openai/...`;
+* a third family for the tie-breaking third opinion — `google/...`, or an open-weight route.
 
 Claude and GPT are used **hybridly** and are the same two families that generate the
 challenges (section 7.2.1), which produces a property worth naming: a problem written by
@@ -1059,11 +1089,12 @@ No single provider family may control more than 40% of a semantic criterion. Two
 of one family are one family — the cap is on the family, because two versions of the same
 model share their failure modes.
 
-Direct rather than through OpenRouter, deliberately. Judging is the validator's own
-accounting, and routing it through the same aggregator miners use would put the judge and
-the judged on one billing surface, where a validator's judging spend and a miner's research
-spend become hard to separate. The miner-facing and validator-facing credential paths are
-kept apart at the provider level, not merely by bookkeeping.
+**The family cap is on the model family, not on the aggregator.** Every judge is reached
+through OpenRouter, so "provider" in the routing sense is always the same and would make the
+cap vacuous if read that way. What matters is who *trained* the model behind the route: three
+routes to three Anthropic snapshots is one family and violates the cap, however many
+distinct slugs it uses. The cap is evaluated on the family field of the panel declaration,
+which is why that field is required rather than derived from the slug.
 
 ## 16.2 Required judge roles
 
@@ -1444,6 +1475,7 @@ The detailed unpublished judge prompt may remain sealed until the end of a judge
 | New miners never evaluated            | Mandatory exploration slots                                                       |
 | Owner self-mining advantage           | Owner does not generate daily tasks; owner-linked miner UIDs should be ineligible |
 | **Validator abuses a miner's credential** | Key held by the RCG and never by the sandbox; every call receipted and hash-chained; receipt totals reconciled against provider-reported usage; miners provision a spend-capped per-round key |
+| **Validator work billed to a miner's key** | One provider means a swapped key *succeeds* and silently bills the wrong party. Two typed resolvers with no owner parameter; purpose selects the credential and a mismatch raises before the request is built; per-account totals reconciled (section 3.4.4) |
 | **Credential leaked by publication**  | Credential travels in a separate sealed envelope the publication path never reads — excluded by construction, not by a filter |
 | **Laboratory exfiltrates its own key**| The laboratory never receives it. It holds a run-scoped session token carrying no credential |
 | **Session token replayed on another challenge** | Token bound to one `run_id` and one `challenge_id`, with a short expiry |
@@ -1484,9 +1516,9 @@ ail-subnet/
 │   ├── tokens.py
 │   ├── metering.py
 │   ├── receipts.py
-│   ├── credentials.py          # sealed envelope -> RCG-held key, never the sandbox
+│   ├── credentials.py          # two typed resolvers; purpose selects, never a parameter
 │   └── adapters/
-│       ├── openrouter.py       # the one miner-facing provider surface
+│       ├── openrouter.py       # the one provider surface, both sides
 │       ├── search.py           # OpenRouter web search
 │       └── simulation.py
 │
@@ -1501,8 +1533,7 @@ ail-subnet/
 │   │   ├── discriminator.py
 │   │   └── store.py            # Redis: packs, dedup fingerprints, run bindings
 │   ├── judges/
-│   │   ├── anthropic.py        # validator's own credential
-│   │   └── openai.py           # validator's own credential
+│   │   └── panel_client.py     # OpenRouter, validator's own key
 │   ├── scheduler/
 │   ├── sandbox/
 │   ├── canonicalizer/
@@ -1596,7 +1627,7 @@ This architecture is professionally implementable with existing components.
 * The official subnet template separates protocol, miner and validator responsibilities, although this subnet requires additional production services around that minimal structure. ([GitHub][9])
 * ORO already demonstrates executable Python-agent submissions, validator work claiming, Docker sandbox execution and score production. ([ORO Subnet][2])
 * Harnyx demonstrates the closer domain analogue: miners submit deep-research scripts, validators execute them under budgets, and LLM judges compare research answers. Its presence confirms technical feasibility, but this subnet differs by optimizing for invention portfolios rather than conventional researched answers. ([Bittensor.ai][10])
-* OpenRouter fronts every major model family behind one OpenAI-compatible API and serves web search on the same credential, so a single adapter covers the whole miner-facing surface and one metering format covers every model a miner might choose.
+* OpenRouter fronts every major model family behind one OpenAI-compatible API and serves web search on the same credential, so a single adapter covers the entire subnet -- miner research, challenge generation and judging -- and one metering format covers every model either side might choose. The cost of that simplification is that credential separation must be enforced in code rather than by incompatible APIs (section 3.4.4).
 * Anthropic’s current evaluation guidance explicitly supports combining deterministic graders and model-based graders for autonomous agents rather than relying on one evaluation type. ([Anthropic][4])
 
 The primary unresolved risk is **measurement validity**, not basic software feasibility.
@@ -1699,8 +1730,8 @@ Mainnet begins only after evaluator validity is demonstrated.
 2. Miners develop complete autonomous invention-lab bundles.
 3. Miners lock and seal their bundle, model manifest and billing delegation.
 4. Each validator derives an unpredictable daily seed.
-5. Each validator generates 20 structured problems daily -- 10 with GPT, 10 with Claude, on
-   its own credentials.
+5. Each validator generates 20 structured problems daily -- 10 with GPT, 10 with Claude,
+   through OpenRouter on its own key.
 6. Cross-family critics, linters, deduplication and reference-lab discrimination probes
    reject bad problems.
 7. The validator commits the challenge-pack hash on chain, then stores the pack in Redis.

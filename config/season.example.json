@@ -53,17 +53,19 @@
     "generators": [
       {
         "family": "gpt",
-        "provider": "openai",
+        "provider": "openrouter",
         "model_snapshot": "<fixed season snapshot>",
         "slots": 10,
-        "critic_family": "claude"
+        "critic_family": "claude",
+        "model_slug": "openai/gpt-5"
       },
       {
         "family": "claude",
-        "provider": "anthropic",
+        "provider": "openrouter",
         "model_snapshot": "<fixed season snapshot>",
         "slots": 10,
-        "critic_family": "gpt"
+        "critic_family": "gpt",
+        "model_slug": "anthropic/claude-sonnet-4.5"
       }
     ],
     "store": {
@@ -105,7 +107,32 @@
   "judging": {
     "minimum_families": 3,
     "family_cap_ppm": 400000,
-    "panels": [],
+    "panels": [
+      {
+        "criterion": "mechanism",
+        "reliability_floor_ppm": 900000,
+        "judges": [
+          {
+            "family": "anthropic",
+            "provider": "openrouter",
+            "model_slug": "anthropic/claude-sonnet-4.5",
+            "model_snapshot": "<fixed season snapshot>"
+          },
+          {
+            "family": "openai",
+            "provider": "openrouter",
+            "model_slug": "openai/gpt-5",
+            "model_snapshot": "<fixed season snapshot>"
+          },
+          {
+            "family": "google",
+            "provider": "openrouter",
+            "model_slug": "google/gemini-2.5-pro",
+            "model_snapshot": "<fixed season snapshot>"
+          }
+        ]
+      }
+    ],
     "degradation_accuracy_floor_ppm": 950000,
     "order_swap_inconsistency_ceiling_ppm": 75000,
     "schema_validity_floor_ppm": 990000,
@@ -147,36 +174,18 @@
     }
   ],
   "providers": {
-    "miner_facing": {
-      "provider": "openrouter",
+    "surface": "openrouter",
+    "miner_pricing": {
       "rcc_per_1k_in": 300,
       "rcc_per_1k_out": 1500,
       "rcc_per_search": 50,
       "allowed_model_slugs": []
     },
-    "validator_facing": [
-      {
-        "provider": "anthropic",
-        "purpose": [
-          "challenge_generation",
-          "critique",
-          "judging"
-        ]
-      },
-      {
-        "provider": "openai",
-        "purpose": [
-          "challenge_generation",
-          "critique",
-          "judging"
-        ]
-      },
-      {
-        "provider": "google",
-        "purpose": [
-          "judging"
-        ]
-      }
+    "validator_purposes": [
+      "challenge_generation",
+      "critique",
+      "judging",
+      "prior_art"
     ]
   },
   "disclosure": {
