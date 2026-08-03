@@ -36,11 +36,14 @@ hash goes on chain.
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from protocol.fixedpoint import PPM
+
+_log = logging.getLogger(__name__)
 
 __all__ = [
     "DuplicateVerdict",
@@ -226,16 +229,39 @@ def is_duplicate(
         if similarity > peak:
             peak, nearest, detector = similarity, identifier, "fingerprint"
 
+    compared = 0
+    incommensurable = 0
     if candidate_embedding is not None:
         for identifier, stored_vector in embedding_history:
             try:
                 similarity = cosine_ppm(candidate_embedding, stored_vector)
             except ValueError:
-                # Mismatched dimensions mean a stored vector from a different embedding model.
-                # Skipped rather than raised: one stale entry must not abort a day's dedup.
+                # Mismatched dimensions mean a stored vector from a different embedding model. One
+                # stale entry must not abort a day's dedup, so it is skipped — but *counted*.
+                incommensurable += 1
                 continue
+            compared += 1
             if similarity > peak:
                 peak, nearest, detector = similarity, identifier, "embedding"
+
+        # The case the silent version hid: every stored vector is from an older model, so the
+        # embedding comparison ran against nothing and dedup quietly became fingerprint-only. The
+        # verdict would then report `detected_by="fingerprint"` with no indication that the check
+        # designed to catch paraphrase-with-different-vocabulary had not run at all.
+        if embedding_history and compared == 0:
+            _log.error(
+                "embedding dedup compared nothing: all %d stored vectors are incommensurable with "
+                "the candidate's, so only the fingerprint check ran. A paraphrase with different "
+                "structural vocabulary would not be caught. Re-embed the dedup window.",
+                incommensurable,
+            )
+        elif incommensurable:
+            _log.warning(
+                "skipped %d of %d stored embeddings as incommensurable; %d were compared",
+                incommensurable,
+                incommensurable + compared,
+                compared,
+            )
 
     return DuplicateVerdict(
         is_duplicate=peak >= threshold_ppm,

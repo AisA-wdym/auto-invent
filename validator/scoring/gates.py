@@ -360,9 +360,16 @@ def _check_models(
     would pass.
     """
     used: dict[str, set[str]] = {}
+    unattributed = 0
     for call in receipt_calls:
         model = str(call.get("model", ""))
         if not model:
+            # A call with no model recorded cannot be checked against the manifest, so it counts
+            # against the gate rather than being skipped. Nothing produces one today — the adapter
+            # refuses an empty slug because it cannot be in any allowlist — and that is exactly why
+            # the skip was worth removing: an enforcement point that relies on an upstream refusal
+            # is enforcing that refusal's continued existence, not the rule it names.
+            unattributed += 1
             continue
         used.setdefault(model, set()).add(str(call.get("revision", "")))
 
@@ -373,17 +380,20 @@ def _check_models(
         if model in declared and declared[model] and revisions - {declared[model]}
     )
 
+    problems: list[str] = []
+    if undeclared:
+        problems.append(
+            f"called {undeclared} without declaring them. The model manifest closes at submission "
+            "(5.3), so an undeclared model is one chosen after the deadline."
+        )
+    if unattributed:
+        problems.append(
+            f"{unattributed} receipted call(s) record no model, so what they invoked cannot be "
+            "checked against the manifest. An uncheckable call is not a compliant one."
+        )
+
     return [
-        GateResult(
-            Gate.UNDECLARED_MODEL,
-            not undeclared,
-            (
-                f"called {undeclared} without declaring them. The model manifest closes at "
-                "submission (5.3), so an undeclared model is one chosen after the deadline."
-                if undeclared
-                else ""
-            ),
-        ),
+        GateResult(Gate.UNDECLARED_MODEL, not problems, "; ".join(problems)),
         GateResult(
             Gate.REVISION_MISMATCH,
             not mismatched,

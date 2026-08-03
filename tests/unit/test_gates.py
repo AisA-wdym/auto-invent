@@ -482,3 +482,31 @@ def test_declared_models_must_be_supplied_rather_than_defaulting():
 
     signature = inspect.signature(check_all)
     assert signature.parameters["declared_models"].default is inspect.Parameter.empty
+
+
+def test_a_receipted_call_with_no_model_fails_the_undeclared_model_gate():
+    """An uncheckable call is not a compliant one.
+
+    Nothing produces such a call today — the adapter refuses an empty slug, because an empty slug
+    cannot be in any allowlist. The skip was removed anyway: an enforcement point relying on an
+    upstream refusal enforces that refusal's continued existence rather than the rule it names.
+    """
+    result = report(
+        receipt_calls=[{"model": "", "revision": "", "provider": "openrouter", "tool": "llm"}]
+    )
+    assert Gate.UNDECLARED_MODEL in result.failed_gates()
+    assert "record no model" in result.reason()
+
+
+def test_an_undeclared_model_and_an_unattributed_call_are_reported_together():
+    """A miner told one failure per round fixes one thing per day."""
+    result = report(
+        receipt_calls=[
+            {"model": "secret/model", "revision": "r", "provider": "openrouter", "tool": "llm"},
+            {"model": "", "revision": "", "provider": "openrouter", "tool": "llm"},
+        ],
+        declared_models={},
+    )
+    detail = next(r.detail for r in result.failures() if r.gate == Gate.UNDECLARED_MODEL)
+    assert "secret/model" in detail
+    assert "record no model" in detail

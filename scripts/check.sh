@@ -17,7 +17,7 @@ echo "── static gates"
 echo
 echo "── composition"
 "$PY" -m gateway --check
-"$PY" -m validator --check --season "${AI_SEASON:-config/season.example.json}"
+"$PY" -m validator --check --season "${AI_SEASON:-config/season.testnet.json}"
 "$PY" -m portal --check
 
 echo

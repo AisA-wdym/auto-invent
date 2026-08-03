@@ -811,3 +811,102 @@ def test_the_example_season_generator_config_parses():
     assert CONFIG.candidates_per_slot == 4
     assert set(CONFIG.generators) == {"gpt", "claude"}
     assert CONFIG.protocol_version == "CPG-1.0"
+
+
+# --------------------------------------------------------------------------
+# The discrimination probe cannot be skipped silently
+# --------------------------------------------------------------------------
+#
+# `build_pack` took `probe=None` as a *default* and skipped 7.4 step 5 entirely, and the validator's
+# composition passed no probe — so the strongest filter in the pipeline never ran and the resulting
+# PackResult was indistinguishable from a probed one. The parameter is now required, the absence is
+# recorded, and commitment refuses it unless the season says otherwise.
+
+
+def test_the_probe_parameter_is_required_rather_than_defaulted():
+    """Running without the discrimination check must be a decision the caller writes down."""
+    import inspect
+
+    from validator.challenge_factory.pipeline import build_pack
+
+    assert inspect.signature(build_pack).parameters["probe"].default is inspect.Parameter.empty
+
+
+def test_an_unprobed_pack_is_refused_at_commitment_by_default():
+    """A committed pack is scored against every laboratory in the cohort. One that may contain
+    problems on which they are all equal produces a day's ranking made of noise — which is worse
+    than a day with no ranking, because it is indistinguishable from a real result."""
+    from validator.challenge_factory.pipeline import PackResult, PipelineError, commit_and_store
+
+    result = PackResult(
+        date="2026-08-03",
+        challenges=(valid_candidate(challenge_id="sha256:" + "a" * 64),),
+        generation_protocol_version="CPG-1.0",
+        challenges_per_generator={"gpt": 1},
+        rejections=(),
+        rcc=0,
+        discrimination_probed=False,
+    )
+    with pytest.raises(PipelineError, match="without the discrimination probe"):
+        commit_and_store(
+            result,
+            publish=lambda _payload: 1,
+            store=InMemoryStore(),
+            salt_commitment="a" * 64,
+            ttl_days=90,
+        )
+
+
+def test_an_unprobed_pack_may_be_committed_when_the_season_permits_it():
+    """A testnet standing up reference laboratories legitimately needs this. It is a declared
+    degradation rather than an oversight, which is the whole difference."""
+    from validator.challenge_factory.pipeline import PackResult, commit_and_store
+
+    published: list[str] = []
+    result = PackResult(
+        date="2026-08-03",
+        challenges=(valid_candidate(challenge_id="sha256:" + "a" * 64),),
+        generation_protocol_version="CPG-1.0",
+        challenges_per_generator={"gpt": 1},
+        rejections=(),
+        rcc=0,
+        discrimination_probed=False,
+    )
+    digest = commit_and_store(
+        result,
+        publish=lambda payload: (published.append(payload), 1)[1],
+        store=InMemoryStore(),
+        salt_commitment="a" * 64,
+        ttl_days=90,
+        allow_unprobed=True,
+    )
+    assert digest.startswith("sha256:")
+    assert published
+
+
+def test_a_probed_pack_commits_without_the_flag():
+    from validator.challenge_factory.pipeline import PackResult, commit_and_store
+
+    result = PackResult(
+        date="2026-08-03",
+        challenges=(valid_candidate(challenge_id="sha256:" + "a" * 64),),
+        generation_protocol_version="CPG-1.0",
+        challenges_per_generator={"gpt": 1},
+        rejections=(),
+        rcc=0,
+        discrimination_probed=True,
+    )
+    assert commit_and_store(
+        result,
+        publish=lambda _payload: 1,
+        store=InMemoryStore(),
+        salt_commitment="a" * 64,
+        ttl_days=90,
+    ).startswith("sha256:")
+
+
+def test_the_season_declares_whether_unprobed_packs_are_allowed():
+    """A threshold that decides what may be committed belongs in the hashed config, not in a
+    function default where two validators could disagree."""
+    assert SEASON["challenge_generation"]["allow_unprobed_packs"] is False
+    assert CONFIG.allow_unprobed_packs is False

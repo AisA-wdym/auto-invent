@@ -97,6 +97,15 @@ class PackResult:
     rejections: tuple[Rejection, ...]
     #: Total validator RCC spent generating the pack.
     rcc: int
+    #: Whether 7.4 step 5 actually ran. False means the pack reached this point without the
+    #: strongest filter in the pipeline having been applied.
+    #:
+    #: Recorded rather than assumed because it *was* assumed: `build_pack` took `probe=None` as a
+    #: default and skipped the step, the validator's composition passed no probe, and the resulting
+    #: `PackResult` looked exactly like a probed one. A pack that skipped the discrimination check
+    #: may contain problems no laboratory can be distinguished on — and twenty of those is a day
+    #: whose ranking is noise. `commit_and_store` refuses one unless the season says otherwise.
+    discrimination_probed: bool = True
 
     def hash(self) -> str:
         return pack_hash(
@@ -248,13 +257,19 @@ async def build_pack(
     taxonomy: Taxonomy,
     config: GeneratorConfig,
     store: ChallengeStore | None = None,
-    probe: ReferenceProbe | None = None,
+    probe: ReferenceProbe | None,
 ) -> PackResult:
     """Run 7.4 steps 1–5 for every slot. Does not commit and does not store.
 
     Split from `commit_and_store` deliberately: this function can fail, and a failure here must
     leave nothing on chain and nothing in the store. Combining them would mean a partial pack could
     already have been committed when a later slot failed.
+
+    `probe` is required and may be `None`. Required so that running without the discrimination check
+    is a decision the caller writes down rather than a default it inherits; `None` is permitted
+    because the probe needs reference-laboratory runs and a judge panel, and a testnet may
+    legitimately generate packs before those exist. The absence is recorded on the result and
+    `commit_and_store` refuses to commit it unless the season config permits it.
 
     Slots run sequentially rather than concurrently. Within a slot the candidates are concurrent
     (see `generate_for_slot`), but the slots themselves are not, because each one's dedup check must
@@ -264,6 +279,15 @@ async def build_pack(
     """
     if not slots:
         raise PipelineError("no slots planned; there would be nothing to generate")
+
+    if probe is None:
+        _log.warning(
+            "generating the pack for %s without the discrimination probe (7.4 step 5). Every "
+            "candidate that clears the linter, the safety filter, dedup and the critic will be "
+            "accepted, including problems on which no laboratory can be distinguished. The result "
+            "is marked unprobed and cannot be committed unless the season permits it.",
+            date,
+        )
 
     history = list(store.fingerprints()) if store is not None else []
     rejections: list[Rejection] = []
@@ -337,6 +361,7 @@ async def build_pack(
         challenges_per_generator=per_generator,
         rejections=tuple(rejections),
         rcc=total_rcc,
+        discrimination_probed=probe is not None,
     )
 
 
@@ -347,6 +372,7 @@ def commit_and_store(
     store: ChallengeStore,
     salt_commitment: str,
     ttl_days: int,
+    allow_unprobed: bool = False,
 ) -> str:
     """Step 6: commit the hash on chain, *then* store the pack. Returns the hash.
 
@@ -360,6 +386,23 @@ def commit_and_store(
     on the chain and the ordering is testable without one.
     """
     from protocol.commitments import PackCommitment
+
+    if not result.discrimination_probed and not allow_unprobed:
+        raise PipelineError(
+            f"refusing to commit the pack for {result.date}: it was generated without the "
+            "discrimination probe (7.4 step 5), so nothing has established that its problems "
+            "separate laboratories at all. A committed pack is scored against every laboratory in "
+            "the cohort, and an unprobed one may contain problems on which they are all equal — "
+            "which produces a day's ranking made of noise rather than a day with no ranking. Set "
+            "challenge_generation.allow_unprobed_packs in the season config to permit this on a "
+            "testnet, where it is a deliberate degradation rather than an oversight."
+        )
+    if not result.discrimination_probed:
+        _log.warning(
+            "committing an UNPROBED pack for %s because the season permits it. 7.4 step 5 did not "
+            "run: no problem in this pack has been shown to discriminate between laboratories.",
+            result.date,
+        )
 
     digest = result.hash()
     commitment = PackCommitment(

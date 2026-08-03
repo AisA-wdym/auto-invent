@@ -1,6 +1,6 @@
 {
   "protocol_version": "AIL-3.0",
-  "season_id": "s-2026-v1",
+  "season_id": "s-2026-testnet",
   "weights_version": 1,
   "mechid": 1,
   "sdk_pin": "10.5.0",
@@ -15,15 +15,13 @@
       "data_and_model_pipelines",
       "optimization_and_efficiency"
     ],
-    "challenges_per_day": 20,
+    "challenges_per_day": 8,
     "stratification": {
-      "software_architecture": 3,
-      "algorithms": 3,
-      "ai_agent_architecture": 4,
-      "distributed_coordination": 3,
-      "memory_and_retrieval": 3,
-      "digital_mechanism_design": 2,
-      "data_and_model_pipelines": 2
+      "software_architecture": 2,
+      "algorithms": 2,
+      "ai_agent_architecture": 2,
+      "distributed_coordination": 1,
+      "memory_and_retrieval": 1
     },
     "excluded_domains": [
       "clinical_or_medical_treatment",
@@ -46,7 +44,7 @@
   ],
   "challenge_generation": {
     "protocol_version": "CPG-1.0",
-    "candidates_per_slot": 4,
+    "candidates_per_slot": 2,
     "dedup_lookback_days": 90,
     "duplicate_threshold_ppm": 850000,
     "minimum_reference_spread_ppm": 120000,
@@ -55,7 +53,7 @@
         "family": "gpt",
         "provider": "openrouter",
         "model_snapshot": "openai/gpt-5.2",
-        "slots": 10,
+        "slots": 4,
         "critic_family": "gpt",
         "model_slug": "openai/gpt-5.2"
       },
@@ -63,7 +61,7 @@
         "family": "claude",
         "provider": "openrouter",
         "model_snapshot": "anthropic/claude-sonnet-5",
-        "slots": 10,
+        "slots": 4,
         "critic_family": "claude",
         "model_slug": "anthropic/claude-sonnet-5"
       }
@@ -75,7 +73,7 @@
     },
     "minimum_degradation_gap_ppm": 100000,
     "maximum_judge_instability_ppm": 150000,
-    "allow_unprobed_packs": false
+    "allow_unprobed_packs": true
   },
   "criterion_weights_ppm": {
     "originality": 250000,
@@ -312,7 +310,7 @@
   "weight_allocation": {
     "temperature_ppm": 100000,
     "maximum_weight_ppm": 175000,
-    "minimum_valid_challenges": 6,
+    "minimum_valid_challenges": 3,
     "burn_uid": 0,
     "reference_floor_lab": "template_sonnet"
   },

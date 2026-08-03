@@ -133,6 +133,9 @@ class GeneratorConfig:
     #: 7.4 step 5 conditions 5 and 3. Config-declared rather than code-defaulted — see `assess`.
     minimum_degradation_gap_ppm: int
     maximum_judge_instability_ppm: int
+    #: Whether a pack that skipped the discrimination probe may be committed. False everywhere it
+    #: matters; see the schema for why it exists at all.
+    allow_unprobed_packs: bool
     #: family -> its config block.
     generators: Mapping[str, Mapping[str, Any]]
     maximum_wall_time_seconds: int = 1_800
@@ -156,6 +159,7 @@ class GeneratorConfig:
             minimum_reference_spread_ppm=int(block["minimum_reference_spread_ppm"]),
             minimum_degradation_gap_ppm=int(block["minimum_degradation_gap_ppm"]),
             maximum_judge_instability_ppm=int(block["maximum_judge_instability_ppm"]),
+            allow_unprobed_packs=bool(block["allow_unprobed_packs"]),
             generators={
                 str(entry["family"]): dict(entry) for entry in block["generators"]
             },

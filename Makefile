@@ -38,7 +38,15 @@ schema: ## Static check: generated models have not drifted from the schemas
 lint: ## Ruff
 	.venv/bin/ruff check .
 
-gates: purity reach schema lint test-determinism test ## Everything CI runs
+check: ## Compose every process and validate the config, without a network, chain or credential
+	$(PY) -m gateway --check
+	# The testnet season, deliberately. `season.example.json` is mainnet-shaped and sets
+	# allow_unprobed_packs to false, so it *correctly* refuses until 7.4 step 5's probe is wired —
+	# a red check there is the build telling the truth. The testnet config declares that
+	# degradation, which is what makes it checkable today.
+	$(PY) -m validator --check --season config/season.testnet.json
+
+gates: purity reach schema lint check test-determinism test ## Everything CI runs
 
 clean:
 	rm -rf .pytest_cache .ruff_cache

@@ -59,10 +59,19 @@ jobs:
         run: .venv/bin/python -m gateway --check
 
       - name: validator --check
-        run: .venv/bin/python -m validator --check
+        run: .venv/bin/python -m validator --check --season config/season.testnet.json
 
-      - name: portal --check
-        run: .venv/bin/python -m portal --check
+      - name: the mainnet-shaped config refuses while the probe is unwired
+        # Not a formality. `season.example.json` sets allow_unprobed_packs to false, so a validator
+        # cannot commit a pack that skipped 7.4 step 5 — the strongest filter in the pipeline. This
+        # step asserts the *refusal*, and it is what will fail (correctly, demanding removal) on the
+        # day a probe is wired.
+        run: |
+          if .venv/bin/python -m validator --check --season config/season.example.json; then
+            echo "::error::the mainnet-shaped config now passes — wire the probe check or remove this"
+            exit 1
+          fi
+
 
       # --- The suite. ---
 

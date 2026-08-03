@@ -44,7 +44,7 @@ from protocol.fixedpoint import apply_weights, assert_sums_to_one, quantile_ppm
 from protocol.receipts import Receipt, reconcile, verify_chain
 from protocol.seeds import daily_seed, salt_commitment, slot_assignments, verify_salt
 from validator.challenge_factory.dedup import is_duplicate
-from validator.challenge_factory.discriminator import assess
+from validator.challenge_factory.discriminator import ReferenceProbe, assess
 from validator.challenge_factory.generator import GeneratorConfig
 from validator.challenge_factory.linter import lint
 from validator.challenge_factory.pipeline import build_pack, commit_and_store
@@ -81,6 +81,11 @@ from validator.scoring.gates import check_all
 from validator.weights import Candidate, WeightsConfig, allocate
 
 _log = logging.getLogger("validator")
+
+#: Appended to `--check`'s probe line when the season permits an unprobed pack. Named rather than
+#: inlined so the line stays readable — and so the phrase appears once, since it is the thing an
+#: operator reading a testnet's output most needs to notice.
+_UNPROBED_NOTE = " (unprobed packs permitted by the season)"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -171,6 +176,10 @@ class Validator:
 
         self.ledger = Ledger()
         self.sandbox = SandboxRunner()
+        #: 7.4 step 5's probe. None until the round loop can drive reference-laboratory runs and a
+        #: judge panel. Held as an attribute rather than left implicit at the call site so it is one
+        #: assignment to change when that lands, and so `--check` can report its absence.
+        self.probe: ReferenceProbe | None = None
 
     # ------------------------------------------------------------------
     # Validation, for --check
@@ -226,6 +235,17 @@ class Validator:
         except Exception as error:  # noqa: BLE001
             problems.append(f"resource class: {error}")
 
+        # The discrimination probe. A problem rather than a silent gap when the season does not
+        # permit unprobed packs: generation would run, produce a pack, and then fail at commitment —
+        # which wastes a full generation budget to learn something checkable here for nothing.
+        if self.probe is None and not self.generation.allow_unprobed_packs:
+            problems.append(
+                "no discrimination probe is wired (7.4 step 5) and the season does not set "
+                "allow_unprobed_packs. Generation would run to completion and then be refused at "
+                "commitment, spending a whole generation budget to learn it. Either wire a probe, "
+                "or set the flag and accept that no problem was shown to discriminate."
+            )
+
         return problems
 
     def describe(self) -> str:
@@ -244,7 +264,9 @@ class Validator:
             f"{self.weights.maximum_weight_ppm / 10_000:.1f}%, burn uid {self.weights.burn_uid}\n"
             f"  cycle      salt {self.cycle.salt_commit_offset} < randomness "
             f"{self.cycle.randomness_offset} < pack {self.cycle.pack_commit_offset} < reveal "
-            f"{self.cycle.reveal_offset}"
+            f"{self.cycle.reveal_offset}\n"
+            f"  probe      {'wired' if self.probe is not None else 'ABSENT'}"
+            f"{_UNPROBED_NOTE if self.generation.allow_unprobed_packs else ''}"
         )
 
     # ------------------------------------------------------------------
@@ -339,6 +361,13 @@ class Validator:
             taxonomy=self.taxonomy,
             config=self.generation,
             store=self.store,
+            # Passed explicitly rather than defaulted. 7.4 step 5 needs reference-laboratory runs
+            # and a judge panel driven from the round loop; until that lands there is no probe to
+            # hand over, and `build_pack` records the absence so `commit_and_store` can refuse to
+            # commit an unprobed pack. An earlier version defaulted this to None, which skipped the
+            # strongest filter in the pipeline and produced a result indistinguishable from a
+            # probed one.
+            probe=self.probe,
         )
         _log.info(
             "pack for %s built: %d challenges, %d candidates rejected (%s), %d RCC",
@@ -354,6 +383,7 @@ class Validator:
             store=self.store,
             salt_commitment=salt_commitment_hex,
             ttl_days=self.generation.dedup_lookback_days,
+            allow_unprobed=self.generation.allow_unprobed_packs,
         )
 
     def build_runner(self, *, admit: Any, close: Any) -> Runner:

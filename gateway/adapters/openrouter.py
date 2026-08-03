@@ -542,11 +542,17 @@ def _annotations(raw: Any) -> list[dict[str, Any]]:
     if annotations is None and isinstance(message, dict):
         annotations = message.get("annotations")
     results: list[dict[str, Any]] = []
+    unreadable = 0
     for annotation in annotations or []:
         citation = getattr(annotation, "url_citation", None) or (
             annotation.get("url_citation") if isinstance(annotation, dict) else None
         )
         if citation is None:
+            # Counted rather than silently dropped. Gate 13.8 checks a laboratory's citations
+            # against the searches it actually made, so a citation the provider returned and we
+            # failed to read makes a *legitimate* citation look fabricated — a fatal gate failing
+            # on our parsing rather than on the miner's answer.
+            unreadable += 1
             continue
         results.append(
             {
@@ -557,6 +563,14 @@ def _annotations(raw: Any) -> list[dict[str, Any]]:
                 "content": getattr(citation, "content", None)
                 or (citation.get("content") if isinstance(citation, dict) else ""),
             }
+        )
+    if unreadable:
+        _log.error(
+            "could not read %d of %d search annotations. A citation the provider returned and we "
+            "failed to parse makes a legitimate citation look fabricated to gate 13.8, which is "
+            "fatal — so this is a parsing failure of ours, not a miner's.",
+            unreadable,
+            unreadable + len(results),
         )
     return results
 

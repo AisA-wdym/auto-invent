@@ -134,6 +134,10 @@ class ChallengeGeneration(ProtocolModel):
         ...,
         description='7.4 step 5 condition 3: the largest spread, in ppm, between repeated judgings of the *same* portfolio that a problem may produce. Above it the panel disagrees with itself, so its scores on real answers are noise.',
     )
+    allow_unprobed_packs: bool = Field(
+        ...,
+        description="Whether a pack generated without 7.4 step 5's discrimination probe may be committed. False everywhere it matters. True is a deliberate testnet degradation: the probe needs reference-laboratory runs and a judge panel, so a network standing them up may need to generate packs before they exist. An unprobed pack may contain problems on which every laboratory is equal, which yields a day's ranking made of noise rather than a day with no ranking — the second is recoverable and the first is not, because it is indistinguishable from a real result.",
+    )
 
 
 class Provider1(Enum):

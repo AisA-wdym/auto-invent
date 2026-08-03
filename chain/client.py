@@ -247,19 +247,41 @@ class BittensorChain:
 
     def _view(self, block: int | None) -> SubnetView:
         client = self._connected()
+        source = client.at(block) if block is not None else client
         try:
-            source = client.at(block) if block is not None else client
             metagraph = source.subnets.metagraph(self.netuid, mechid=self.mechid)
-        except TypeError:
-            # A runtime that predates per-mechanism metagraphs. Falling back rather than failing,
-            # because mechid 0 is the whole subnet there and the read is still correct.
-            source = client.at(block) if block is not None else client
-            metagraph = source.subnets.metagraph(self.netuid)
+        except TypeError as error:
+            # A runtime that predates per-mechanism metagraphs does not accept the keyword. Retrying
+            # without it is correct *only* when we wanted mechanism 0, because on such a runtime
+            # mechanism 0 is the whole subnet. For any other mechid the retry would silently return
+            # a different mechanism's neuron set — a wrong cohort, scored and paid as if it were
+            # ours.  The narrowness matters: `TypeError` can come from anywhere inside the call, so
+            # the message is checked too. An earlier version caught it unconditionally and retried,
+            # which would have turned any internal TypeError into a silent read of mechanism 0.
+            if self.mechid != 0 or "mechid" not in str(error):
+                raise ChainError(
+                    f"could not read the metagraph for netuid {self.netuid} mechanism "
+                    f"{self.mechid}: {error}. Retrying without the mechanism would read another "
+                    "mechanism's neuron set, which would be scored and paid as if it were ours."
+                ) from error
+            _log.info(
+                "this runtime does not accept a mechid; reading netuid %d as a single mechanism",
+                self.netuid,
+            )
+            try:
+                metagraph = source.subnets.metagraph(self.netuid)
+            except Exception as retry_error:  # noqa: BLE001
+                raise ChainError(
+                    f"could not read the metagraph for netuid {self.netuid}: {retry_error}"
+                ) from retry_error
         except Exception as error:  # noqa: BLE001
             raise ChainError(
                 f"could not read the metagraph for netuid {self.netuid}: {error}"
             ) from error
-        return _project(metagraph, netuid=self.netuid, mechid=self.mechid)
+
+        projected = _project(metagraph, netuid=self.netuid, mechid=self.mechid)
+        _assert_mechanism(metagraph, expected=self.mechid, netuid=self.netuid)
+        return projected
 
     def publish_commitment(self, payload: str) -> int:
         """Write a commitment through the Commitments pallet.
@@ -384,6 +406,29 @@ class BittensorChain:
             ) from error
         except Exception as error:  # noqa: BLE001
             raise ChainError(f"could not open a sealed payload: {error}") from error
+
+
+def _assert_mechanism(metagraph: Any, *, expected: int, netuid: int) -> None:
+    """Check the metagraph we got is the mechanism we asked for.
+
+    The SDK accepts `mechid` as a keyword and reports it back on the result, so this is a cheap
+    confirmation that the two agree. It exists because the alternative failure is invisible: reading
+    mechanism 0 when mechanism 1 was wanted returns a perfectly well-formed metagraph with the wrong
+    neurons in it, and every score computed from it would be attributed to the wrong hotkeys.
+
+    A metagraph that does not report a mechanism at all is accepted with a log rather than refused —
+    an older runtime has no field to report, and refusing would make this client unusable there.
+    """
+    reported = getattr(metagraph, "mechid", None)
+    if reported is None:
+        _log.debug("metagraph for netuid %d reports no mechanism; cannot confirm", netuid)
+        return
+    if int(reported) != expected:
+        raise ChainError(
+            f"asked netuid {netuid} for mechanism {expected} and received {reported}. Scoring "
+            "against another mechanism's neuron set would attribute every result to the wrong "
+            "hotkeys."
+        )
 
 
 def _project(metagraph: Any, *, netuid: int, mechid: int) -> SubnetView:

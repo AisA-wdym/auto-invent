@@ -129,6 +129,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "allow_unprobed_packs",
         "candidates_per_slot",
         "dedup_lookback_days",
         "duplicate_threshold_ppm",
@@ -256,6 +257,11 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 1000000
+        },
+        "allow_unprobed_packs": {
+          "description": "Whether a pack generated without 7.4 step 5's discrimination probe may be committed. False everywhere it matters. True is a deliberate testnet degradation: the probe needs reference-laboratory runs and a judge panel, so a network standing them up may need to generate packs before they exist. An unprobed pack may contain problems on which every laboratory is equal, which yields a day's ranking made of noise rather than a day with no ranking \u2014 the second is recoverable and the first is not, because it is indistinguishable from a real result.",
+          "type": "boolean",
+          "default": false
         }
       }
     },

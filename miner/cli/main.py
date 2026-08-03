@@ -209,7 +209,19 @@ def _scan_for_secrets(root: Path) -> list[Finding]:
             continue
         try:
             text = path.read_text(errors="ignore")
-        except OSError:
+        except OSError as error:
+            # Reported, not skipped. This is the one check standing between a credential committed
+            # by habit and 6.3 publishing it, and a file it could not read is a file it did not
+            # check — which is not a file that is clean. Skipping silently would let `seal` proceed
+            # on a bundle containing an unread file, and a published key cannot be un-published.
+            findings.append(
+                Finding(
+                    "12",
+                    f"could not read {path.relative_to(root)} to scan for credentials ({error}). "
+                    "A file that was not scanned is not a file that is clean, and 6.3 publishes "
+                    "the bundle after execution closes.",
+                )
+            )
             continue
         for pattern in _SECRET_SHAPES:
             match = pattern.search(text)

@@ -165,3 +165,114 @@ def test_every_internal_documentation_link_resolves(document):
             continue
         resolved = (base / target).resolve()
         assert resolved.exists(), f"{document} links to {target}, which does not exist"
+
+
+# --------------------------------------------------------------------------
+# The two season configs, and why one of them must fail
+# --------------------------------------------------------------------------
+
+
+def test_the_mainnet_shaped_config_refuses_while_the_probe_is_unwired():
+    """`--check` against `season.example.json` must FAIL, and that is the point.
+
+    The example config is mainnet-shaped: it sets `allow_unprobed_packs` to false, so a validator
+    cannot commit a pack that skipped 7.4 step 5 — the strongest filter in the pipeline. Until a
+    probe is wired, refusing is the honest answer, and a check that passed here would be claiming
+    the build can run a mainnet round.
+
+    This test is expected to *fail* on the day a probe lands, which is when it should be deleted.
+    """
+    import subprocess
+
+    result = subprocess.run(  # noqa: S603
+        [
+            ".venv/bin/python",
+            "-m",
+            "validator",
+            "--check",
+            "--season",
+            "config/season.example.json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1, (
+        "the mainnet-shaped config now passes — wire the probe check or delete this test"
+    )
+    assert "discrimination probe" in result.stderr
+
+
+def test_the_testnet_config_passes_because_it_declares_the_degradation():
+    """The difference between the two configs is a declaration, not a capability.
+
+    A testnet standing up reference laboratories legitimately needs to generate packs before the
+    probe exists. Setting the flag makes that a decision on record rather than an oversight.
+    """
+    import subprocess
+
+    result = subprocess.run(  # noqa: S603
+        [
+            ".venv/bin/python",
+            "-m",
+            "validator",
+            "--check",
+            "--season",
+            "config/season.testnet.json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr[:600]
+    assert "probe      ABSENT" in result.stdout
+    assert "permitted by the season" in result.stdout
+
+
+@pytest.mark.parametrize("name", ["season.example.json", "season.testnet.json"])
+def test_every_shipped_season_config_validates_against_the_schema(name):
+    """Two configs mean two chances to drift from the schema.
+
+    Validated through the generated model, which is what the rest of the suite uses — rather than
+    adding a `jsonschema` dependency for one assertion. `make schema` already guarantees the model
+    and the schema agree, so this transitively checks the config against the schema.
+    """
+    import json
+
+    from protocol.models.season_config import SeasonConfig
+
+    SeasonConfig.model_validate(json.loads(pathlib.Path("config", name).read_text()))
+
+
+@pytest.mark.parametrize("name", ["season.example.json", "season.testnet.json"])
+def test_no_shipped_season_config_carries_a_float(name):
+    """Every season config is hashed and anchored; a float makes the anchor unreproducible."""
+    import json
+
+    from protocol.canonical import assert_no_floats
+
+    assert_no_floats(json.loads(pathlib.Path("config", name).read_text()))
+
+
+def test_the_testnet_config_differs_from_the_example_only_in_declared_ways():
+    """A testnet that quietly diverged on scoring would make its results uncomparable.
+
+    The permitted differences are the identifier, the two size reductions that let a round finish in
+    a sitting, and the one declared degradation. Everything in the reward path — criterion weights,
+    rank weights, scoring, judging, weight allocation — must match, or the testnet is measuring a
+    different mechanism than the one being tested.
+    """
+    import json
+
+    example = json.loads(pathlib.Path("config/season.example.json").read_text())
+    testnet = json.loads(pathlib.Path("config/season.testnet.json").read_text())
+
+    for block in ("criterion_weights_ppm", "rank_weights_ppm", "scoring", "judging"):
+        assert testnet[block] == example[block], f"{block} diverges from the reference season"
+
+    # Weight allocation may relax `minimum_valid_challenges`, because the pack is smaller — but
+    # nothing else, since the rest is the emission mechanism itself.
+    for key, value in example["weight_allocation"].items():
+        if key == "minimum_valid_challenges":
+            continue
+        assert testnet["weight_allocation"][key] == value, f"weight_allocation.{key} diverges"
