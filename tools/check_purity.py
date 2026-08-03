@@ -43,6 +43,17 @@ PURE_MODULES = (
     "validator/scoring/criteria.py",
     "validator/scoring/daily.py",
     "validator/weights.py",
+    # The challenge pack is upstream of every score, so a non-deterministic value here cannot be
+    # separated from signal anywhere downstream. These four are the steps that must decide the
+    # same way on every validator and every host: the seeded plan, the linter, the dedup
+    # comparison and the safety screen. The generator and critic are deliberately absent — they
+    # call models, so they cannot be deterministic and are not listed.
+    "protocol/commitments.py",
+    "validator/challenge_factory/taxonomy.py",
+    "validator/challenge_factory/linter.py",
+    "validator/challenge_factory/dedup.py",
+    "validator/challenge_factory/safety.py",
+    "validator/challenge_factory/discriminator.py",
 )
 
 # Importing any of these admits ambient state into a supposedly pure module.

@@ -111,6 +111,22 @@ ENFORCEMENT: dict[str, str] = {
         "validator.scoring.daily:rolling_score",
     "20.1/20.4 a field entirely below the reference floor burns the emission":
         "validator.weights:allocate",
+    "7.2 the pack is stratified across the taxonomy and split exactly between generators":
+        "validator.challenge_factory.taxonomy:plan",
+    "7.4.2 a candidate missing any of the eight requirements is rejected":
+        "validator.challenge_factory.linter:lint",
+    "2 a candidate in an excluded domain never enters a pack":
+        "validator.challenge_factory.safety:screen",
+    "7.4.4 a candidate duplicating the last 90 days is rejected":
+        "validator.challenge_factory.dedup:is_duplicate",
+    "7.4.5 a problem that does not discriminate between laboratories is rejected":
+        "validator.challenge_factory.discriminator:assess",
+    "7.5 the pack hash is committed on chain before the pack is stored":
+        "validator.challenge_factory.pipeline:commit_and_store",
+    "7.5 the challenge store is never reachable from the sandbox":
+        "validator.challenge_factory.store:assert_not_sandbox_reachable",
+    "7.3 a salt committed at or after the randomness block is refused":
+        "protocol.commitments:verify_salt_timing",
 }
 
 #: Decorator shapes meaning "a framework calls this, not our code". `@app.post("/v1/llm")`

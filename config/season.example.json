@@ -56,16 +56,16 @@
         "provider": "openrouter",
         "model_snapshot": "<fixed season snapshot>",
         "slots": 10,
-        "critic_family": "claude",
-        "model_slug": "openai/gpt-5"
+        "critic_family": "gpt",
+        "model_slug": "openai/gpt-5.2"
       },
       {
         "family": "claude",
         "provider": "openrouter",
         "model_snapshot": "<fixed season snapshot>",
         "slots": 10,
-        "critic_family": "gpt",
-        "model_slug": "anthropic/claude-sonnet-4.5"
+        "critic_family": "claude",
+        "model_slug": "anthropic/claude-sonnet-5"
       }
     ],
     "store": {
@@ -115,13 +115,13 @@
           {
             "family": "anthropic",
             "provider": "openrouter",
-            "model_slug": "anthropic/claude-sonnet-4.5",
+            "model_slug": "anthropic/claude-sonnet-5",
             "model_snapshot": "<fixed season snapshot>"
           },
           {
             "family": "openai",
             "provider": "openrouter",
-            "model_slug": "openai/gpt-5",
+            "model_slug": "openai/gpt-5.2",
             "model_snapshot": "<fixed season snapshot>"
           },
           {
