@@ -87,6 +87,20 @@ ENFORCEMENT: dict[str, str] = {
         "protocol.receipts:reconcile",
     "3.4.4 a call is refused if billed to the wrong account":
         "protocol.receipts:Call.__post_init__",
+    "18.3 pairwise verdicts become a ranking":
+        "validator.judge.bradley_terry:fit",
+    "18.1 duplicate ideas collapse to one lineage before scoring":
+        "validator.scoring.criteria:collapse_duplicates",
+    "18.1 the portfolio is rank-weighted 0.40/0.25/0.15/0.12/0.08":
+        "validator.scoring.criteria:rank_weighted",
+    "18.4 a weak mechanism caps value and originality":
+        "validator.scoring.criteria:challenge_score",
+    "18.5 the daily score weights the lower quartile at 30%":
+        "validator.scoring.daily:daily_score",
+    "18.6 the rolling score selects an estimator and never scales the result":
+        "validator.scoring.daily:rolling_score",
+    "20.1/20.4 a field entirely below the reference floor burns the emission":
+        "validator.weights:allocate",
 }
 
 #: Decorator shapes meaning "a framework calls this, not our code". `@app.post("/v1/llm")`

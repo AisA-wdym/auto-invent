@@ -36,6 +36,13 @@ PURE_MODULES = (
     "protocol/fixedpoint.py",
     "protocol/seeds.py",
     "protocol/receipts.py",
+    # The reward path. A non-deterministic value in any of these changes what a miner is
+    # paid, and changes it identically for everyone — so it is invisible in a ranking right
+    # up to the point it decides a qualification floor.
+    "validator/judge/bradley_terry.py",
+    "validator/scoring/criteria.py",
+    "validator/scoring/daily.py",
+    "validator/weights.py",
 )
 
 # Importing any of these admits ambient state into a supposedly pure module.
