@@ -110,6 +110,22 @@ def digest_object(value: Any) -> str:
     return digest_bytes(canonical_bytes(value))
 
 
+def same_digest(left: str, right: str) -> bool:
+    """Whether two digests name the same bytes, whichever form each is written in.
+
+    This exists because the codebase has two representations of one value and both are deliberate.
+    `digest_object` and the 5.2 manifests write `sha256:<hex>`; `protocol.commitments` strips the
+    prefix, because an on-chain commitment pays for every byte and the algorithm is fixed by the
+    protocol rather than carried per commitment.
+
+    Nothing was wrong with either choice, and comparing across them with `==` was wrong everywhere
+    it happened. It happened in the bundle fetcher and in the credential-envelope check, so a
+    validator would have refused *every* submission — each with a message saying the digest was
+    malformed, which is the one explanation that is not true.
+    """
+    return left.removeprefix("sha256:").lower() == right.removeprefix("sha256:").lower()
+
+
 def digest_bytes(raw: bytes) -> str:
     """`sha256:...` over bytes exactly as given.
 

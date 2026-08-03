@@ -144,6 +144,35 @@ class ChallengeGeneration(ProtocolModel):
     )
 
 
+class Funnel(ProtocolModel):
+    """
+    Section 17's evaluation funnel. Every valid response gets the cheap anchored pointwise screen; only the cohort gets the expensive pairwise tournament. These numbers decide both what a round costs the validator and how much incumbency the ranking permits, which is why they are season configuration rather than constants: cohort_random and cohort_new exist so that being outside the top cannot become self-perpetuating (17.2).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    cohort_top: conint(ge=2) = Field(
+        ..., description='Highest-screening laboratories admitted to full evaluation.'
+    )
+    cohort_random: conint(ge=0) = Field(
+        ...,
+        description="Randomly drawn from the rest, seeded from the day's seed so it is reproducible and unpredictable in advance. Prevents incumbent lock-in (17.2).",
+    )
+    cohort_new: conint(ge=0) = Field(
+        ...,
+        description='Laboratories with no rolling history, admitted regardless of screen. A new entrant cannot screen well against incumbents it has never been compared with.',
+    )
+    swiss_rounds: conint(ge=1) = Field(
+        ...,
+        description='Pairing rounds per challenge (17.3). Each is one pair of judged comparisons per pairing, in both presentation orders.',
+    )
+    prior_art_ideas_per_portfolio: conint(ge=0) = Field(
+        ...,
+        description='Ideas per portfolio given a prior-art report (15). Reports are built for the cohort only, after screening, because the search is the expensive half of judging.',
+    )
+
+
 class Provider1(Enum):
     openrouter = 'openrouter'
 
@@ -470,6 +499,10 @@ class SeasonConfig(ProtocolModel):
         min_length=1,
     )
     scoring: Scoring
+    funnel: Funnel = Field(
+        ...,
+        description="Section 17's evaluation funnel. Every valid response gets the cheap anchored pointwise screen; only the cohort gets the expensive pairwise tournament. These numbers decide both what a round costs the validator and how much incumbency the ranking permits, which is why they are season configuration rather than constants: cohort_random and cohort_new exist so that being outside the top cannot become self-perpetuating (17.2).",
+    )
     judging: Judging
     weight_allocation: WeightAllocation = Field(
         ...,

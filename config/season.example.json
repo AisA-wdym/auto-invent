@@ -107,6 +107,13 @@
     "rolling_long_weight_ppm": 400000,
     "minimum_days_for_median": 7
   },
+  "funnel": {
+    "cohort_top": 8,
+    "cohort_random": 2,
+    "cohort_new": 2,
+    "swiss_rounds": 3,
+    "prior_art_ideas_per_portfolio": 2
+  },
   "judging": {
     "minimum_families": 3,
     "family_cap_ppm": 400000,

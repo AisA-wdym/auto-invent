@@ -20,6 +20,7 @@ import pytest
 
 from chain.client import ChainError, FakeChain
 from validator.__main__ import Validator, ValidatorSteps, build_driver, main
+from validator.challenge_factory.store import StoreError
 from validator.driver import IMPLEMENTATION
 from validator.roundstate import RoundState, StandingEntry
 from validator.scheduler import Step
@@ -39,6 +40,8 @@ def args(**over) -> argparse.Namespace:
         rcg_endpoint="http://127.0.0.1:8081",
         redis_url="",
         workspace=pathlib.Path("var/runs"),
+        concurrency=2,
+        runner_token="runner-token",
         check=False,
         once=False,
         log_level="INFO",
@@ -97,46 +100,41 @@ def test_build_driver_wires_the_round_store_rather_than_the_challenge_store():
 # --------------------------------------------------------------------------
 
 
-def test_the_unimplemented_steps_are_named_exactly():
-    """A list rather than a boolean, because `main` prints it and an operator needs to know which
-    half of the round is missing."""
-    assert validator().unimplemented_steps() == ("execute", "score")
+def test_no_step_is_unimplemented():
+    """The guard that kept the loop from starting while execute and score were placeholders. It
+    stays, because it is what a half-built release trips over rather than discovering on chain."""
+    assert validator().unimplemented_steps() == ()
 
 
-def test_execute_and_score_raise_rather_than_returning_something_plausible():
-    """They could each return the state unchanged and the round would complete, submit a weight
-    vector built from no standings, and look healthy."""
-    subject = validator()
-    for method in (subject.execute_step, subject.score_step):
-        with pytest.raises(NotImplementedError, match="not implemented"):
-            method(state(), block=1_000, deadline_block=2_000)
+def test_execute_refuses_a_round_with_no_stored_pack():
+    """The pack's hash is on chain, so it cannot be regenerated. A round that lost it is over —
+    executing against a freshly generated pack would test laboratories on problems no commitment
+    vouches for."""
+    with pytest.raises(StoreError, match="no pack is stored"):
+        ValidatorSteps(validator()).execute(state(), block=1_000, deadline_block=2_000)
 
 
-def test_main_refuses_to_start_the_loop_while_a_step_is_missing(capsys, monkeypatch):
-    """Return code 4, and the reason on stderr. Not a loop that abandons every round: entering one
-    costs two extrinsics and a generation budget before reaching the missing step."""
+def test_score_refuses_to_re_run_executions_it_cannot_find():
+    """Re-running now would give these laboratories a window nobody else had. The round is lost
+    instead, which is the expensive answer and the only fair one."""
+    with pytest.raises(StoreError, match="no executions are stored"):
+        ValidatorSteps(validator()).score(state(), block=1_000, deadline_block=2_000)
+
+
+def test_main_enters_the_loop_now_that_every_step_is_built(monkeypatch):
+    """It refused with exit code 4 while execute and score were placeholders. One tick against a
+    fake chain: the round has no salt commitment from this process, so it is abandoned by name —
+    which is the loop working, not the loop failing."""
 
     def fake_chain(**_kwargs):
-        # Advanced into the epoch the shipped anchor names, or the anchor check fails first and this
-        # would assert on the wrong refusal.
+        # Advanced into the epoch the shipped anchor names, or the anchor check fails first.
         chain = FakeChain(netuid=1)
         anchor = int(SEASON["cycle"]["anchor_block"])
         chain.advance(anchor + 1_000 - chain.current_block())
         return chain
 
     monkeypatch.setattr("validator.__main__.BittensorChain", fake_chain)
-    code = main(
-        [
-            "--season",
-            "config/season.testnet.json",
-            "--netuid",
-            "1",
-            "--once",
-        ]
-    )
-    assert code == 4
-    captured = capsys.readouterr()
-    assert "the round loop cannot run: execute, score" in captured.err
+    assert main(["--season", "config/season.testnet.json", "--netuid", "1", "--once"]) == 0
 
 
 def test_check_still_passes_while_the_loop_cannot_run():
@@ -231,6 +229,6 @@ def test_a_laboratory_with_a_failed_gate_is_not_a_candidate():
 def test_every_scheduler_step_has_a_validator_method():
     """A step added to the scheduler with no `*_step` method would report as implemented — the
     `_not_implemented` marker is absent from a method that does not exist — and then fail at the
-    moment it was due."""
+    moment it was due, which is once a day inside a window that does not reopen."""
     for step in Step:
         assert hasattr(Validator, f"{step.name.lower()}_step"), step.name

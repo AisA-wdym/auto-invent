@@ -17,6 +17,7 @@
     "criterion_weights_ppm",
     "rank_weights_ppm",
     "scoring",
+    "funnel",
     "judging",
     "weight_allocation",
     "cycle",
@@ -387,6 +388,45 @@
           "description": "Below this many valid days, the rolling score is the plain mean. Section 18.6 states there is no credibility multiplier suppressing new miners, so this must not act as one: it selects an estimator, it does not scale a score.",
           "type": "integer",
           "minimum": 1
+        }
+      }
+    },
+    "funnel": {
+      "description": "Section 17's evaluation funnel. Every valid response gets the cheap anchored pointwise screen; only the cohort gets the expensive pairwise tournament. These numbers decide both what a round costs the validator and how much incumbency the ranking permits, which is why they are season configuration rather than constants: cohort_random and cohort_new exist so that being outside the top cannot become self-perpetuating (17.2).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cohort_top",
+        "cohort_random",
+        "cohort_new",
+        "swiss_rounds",
+        "prior_art_ideas_per_portfolio"
+      ],
+      "properties": {
+        "cohort_top": {
+          "description": "Highest-screening laboratories admitted to full evaluation.",
+          "type": "integer",
+          "minimum": 2
+        },
+        "cohort_random": {
+          "description": "Randomly drawn from the rest, seeded from the day's seed so it is reproducible and unpredictable in advance. Prevents incumbent lock-in (17.2).",
+          "type": "integer",
+          "minimum": 0
+        },
+        "cohort_new": {
+          "description": "Laboratories with no rolling history, admitted regardless of screen. A new entrant cannot screen well against incumbents it has never been compared with.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "swiss_rounds": {
+          "description": "Pairing rounds per challenge (17.3). Each is one pair of judged comparisons per pairing, in both presentation orders.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "prior_art_ideas_per_portfolio": {
+          "description": "Ideas per portfolio given a prior-art report (15). Reports are built for the cohort only, after screening, because the search is the expensive half of judging.",
+          "type": "integer",
+          "minimum": 0
         }
       }
     },

@@ -173,3 +173,33 @@ def test_a_malformed_digest_is_rejected(value):
 
 def test_a_well_formed_digest_is_accepted():
     assert is_digest(digest_bytes(b"anything")) is True
+
+
+# --------------------------------------------------------------------------
+# Two representations of one digest
+# --------------------------------------------------------------------------
+
+
+def test_the_two_digest_forms_compare_equal():
+    """`digest_object` writes `sha256:<hex>`; `protocol.commitments` stores bare hex because an
+    on-chain commitment pays for every byte. Both are deliberate, and `==` across them is wrong."""
+    from protocol.canonical import same_digest
+
+    prefixed = "sha256:" + "ab" * 32
+    assert same_digest(prefixed, "ab" * 32)
+    assert same_digest("ab" * 32, prefixed)
+    assert same_digest(prefixed, prefixed)
+
+
+def test_case_does_not_change_a_digest():
+    from protocol.canonical import same_digest
+
+    assert same_digest("sha256:" + "AB" * 32, "ab" * 32)
+
+
+def test_different_digests_are_still_different():
+    """The comparison is permissive about *form*, not about value."""
+    from protocol.canonical import same_digest
+
+    assert not same_digest("sha256:" + "ab" * 32, "cd" * 32)
+    assert not same_digest("ab" * 32, "ab" * 31 + "cc")

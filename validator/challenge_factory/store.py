@@ -103,6 +103,8 @@ class ChallengeStore(Protocol):
 
     def write_pack(self, pack: StoredPack, *, committed_hash: str, ttl_days: int) -> None: ...
     def read_pack(self, date: str) -> StoredPack | None: ...
+    def write_executions(self, date: str, body: Mapping[str, Any], *, ttl_days: int) -> None: ...
+    def read_executions(self, date: str) -> Mapping[str, Any] | None: ...
     def record_fingerprints(
         self, entries: Sequence[tuple[str, Fingerprint]], *, ttl_days: int
     ) -> None: ...
@@ -167,6 +169,11 @@ class InMemoryStore:
     """
 
     packs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: date -> what the execution phase produced. Held here rather than in round state because it is
+    #: working data between two scheduler steps: execution closes at one block and scoring begins at
+    #: another, so the portfolios have to survive the gap — and a restart in between must find them
+    #: or the round is unrecoverable, the executions having cost real money to produce.
+    executions: dict[str, dict[str, Any]] = field(default_factory=dict)
     _fingerprints: dict[str, Fingerprint] = field(default_factory=dict)
     _embeddings: dict[str, Sequence[float]] = field(default_factory=dict)
     runs: dict[str, Mapping[str, str]] = field(default_factory=dict)
@@ -182,6 +189,12 @@ class InMemoryStore:
         pack = _pack_from_body(body)
         pack.verify()
         return pack
+
+    def write_executions(self, date: str, body: Mapping[str, Any], *, ttl_days: int) -> None:
+        self.executions[date] = json.loads(json.dumps(body))
+
+    def read_executions(self, date: str) -> Mapping[str, Any] | None:
+        return self.executions.get(date)
 
     def record_fingerprints(
         self, entries: Sequence[tuple[str, Fingerprint]], *, ttl_days: int
@@ -256,6 +269,23 @@ class RedisStore:
         pack = _pack_from_body(json.loads(raw))
         pack.verify()
         return pack
+
+    def write_executions(self, date: str, body: Mapping[str, Any], *, ttl_days: int) -> None:
+        """What the execution phase produced, for the scoring step to read.
+
+        Overwrites, unlike `write_pack`. A pack is committed on chain and must not move; executions
+        are this validator's own working record between two steps, and a retried execution phase
+        writing a second copy beside the first would leave the scorer choosing between them.
+        """
+        self._redis().set(
+            self._key("executions", date),
+            json.dumps(body, sort_keys=True),
+            ex=ttl_days * _SECONDS_PER_DAY,
+        )
+
+    def read_executions(self, date: str) -> Mapping[str, Any] | None:
+        raw = self._redis().get(self._key("executions", date))
+        return json.loads(raw) if raw is not None else None
 
     def record_fingerprints(
         self, entries: Sequence[tuple[str, Fingerprint]], *, ttl_days: int

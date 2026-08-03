@@ -34,6 +34,7 @@ import logging
 import os
 import secrets
 import sys
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
@@ -41,12 +42,14 @@ from typing import Any
 
 from chain.client import BittensorChain, ChainClient, ChainError, FakeChain
 from gateway.adapters.openrouter import ModelPin
+from gateway.client import GatewayClient
 from gateway.credentials import CredentialError, CredentialSet, load_validator_credential
 from gateway.metering import Ledger, PriceTable
 from protocol.commitments import PackCommitment, SaltCommitment, verify_salt_timing
 from protocol.fixedpoint import apply_weights, assert_sums_to_one, quantile_ppm
 from protocol.receipts import Receipt, reconcile, verify_chain
 from protocol.seeds import daily_seed, salt_commitment, slot_assignments, verify_salt
+from validator.artifacts import FetchLimits
 from validator.challenge_factory.dedup import is_duplicate
 from validator.challenge_factory.discriminator import ReferenceProbe, assess
 from validator.challenge_factory.generator import GeneratorConfig
@@ -62,16 +65,20 @@ from validator.challenge_factory.store import (
 from validator.challenge_factory.taxonomy import Taxonomy, plan
 from validator.cycle import CycleConfig, CycleError, Phase
 from validator.driver import Driver, describe
+from validator.execution import as_document, execute_round, from_document
 from validator.judge.bradley_terry import fit, strengths_to_ppm
 from validator.judge.pairwise import combine_orders, swiss_pairings
 from validator.judge.panels import panels_from_season, pins_for
 from validator.judge.pointwise import aggregate
 from validator.model_client import ModelClient
+from validator.rounds import FunnelConfig, RoundScores, score_round
 from validator.roundstate import (
     InMemoryRoundStore,
+    LabStatus,
     RedisRoundStore,
     RoundState,
     RoundStore,
+    StandingEntry,
 )
 from validator.sandbox.container import (
     Limits,
@@ -87,8 +94,9 @@ from validator.scoring.criteria import (
     collapse_duplicates,
     rank_weighted,
 )
-from validator.scoring.daily import DailyConfig, daily_score, rolling_score
+from validator.scoring.daily import DailyConfig, ScoreHistory, daily_score, rolling_score
 from validator.scoring.gates import check_all
+from validator.submissions import Prepared, prepare_all
 from validator.weights import Candidate, WeightsConfig, allocate
 
 _log = logging.getLogger("validator")
@@ -111,6 +119,20 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--redis-url", default=os.environ.get("AI_REDIS_URL", ""))
     parser.add_argument("--workspace", default=Path("var/runs"), type=Path)
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=int(os.environ.get("AI_CONCURRENCY", "4")),
+        help=(
+            "containers in flight at once. Each reserves CPU and memory, and oversubscribing the "
+            "host slows every laboratory — which is unfair invisibly, since wall time is gate 13.7"
+        ),
+    )
+    parser.add_argument(
+        "--runner-token",
+        default=os.environ.get("AI_RUNNER_TOKEN", ""),
+        help="bearer token for the gateway's runner-authenticated routes",
+    )
     parser.add_argument(
         "--check",
         action="store_true",
@@ -200,6 +222,18 @@ class Validator:
                 "abandoned rather than resumed."
             )
             self.round_store = InMemoryRoundStore()
+
+        self.funnel = FunnelConfig.from_season(season)
+        self.fetch_limits = FetchLimits()
+        self.runner_token = args.runner_token
+        pricing = season["providers"]["miner_pricing"]
+        self.episode_seconds = int(pricing["maximum_wall_time_seconds"])
+        self.sandbox_limits = Limits.from_season(
+            season, wall_time_seconds=self.episode_seconds
+        )
+        #: Every model any laboratory may reach, from the season's resource classes. The gateway
+        #: enforces it; passing it here is what tells the gateway what to enforce.
+        self.allowed_models = [str(slug) for slug in pricing["allowed_model_slugs"]]
 
         self.ledger = Ledger()
         self.sandbox = SandboxRunner()
@@ -512,46 +546,225 @@ class Validator:
     # ------------------------------------------------------------------
 
     def execute_step(self, state: RoundState, *, block: int, deadline_block: int) -> RoundState:
-        """Reveal the sealed bundles and run every laboratory against every challenge.
+        """9, 10, 13: reveal the bundles, run every laboratory on every challenge, gate each result.
 
-        Not implemented. What is missing is named rather than approximated, because the pieces that
-        exist would compose into something that looked like a round and measured nothing:
-
-        * reading this round's `SubmissionCommitment`s from the metagraph and resolving each to
-          a uid at one consistent height;
-        * fetching each `artifact_url`, verifying the bytes against `bundle_digest`, and loading the
-          image — none of which exists yet, and all of which handles miner-chosen input;
-        * unsealing each credential envelope through `chain.unseal` and holding the key in the
-          gateway rather than anywhere near the container;
-        * iterating challenges per laboratory through `build_runner`, gating each result with
-          `gate`, and canonicalising with `canonicalise`.
-
-        `Runner.execute` already does one laboratory against one challenge, and `gate` and
-        `canonicalise` already do their part. It is the fetch-and-verify layer and the per-round
-        iteration that are absent.
+        The order is the security argument. Submissions are read from one snapshot so a
+        deregistration cannot re-point a commitment at a uid somebody else now owns; each
+        artifact is verified against its committed digest before it is opened; each image is checked
+        against the digest in its manifest before it is run; and only then does a container start.
         """
-        raise NotImplementedError(
-            "execute is not implemented: bundle fetch-and-verify and the per-round iteration over "
-            "laboratories are missing. See Validator.execute_step."
+        pack = self.store.read_pack(state.date)
+        if pack is None:
+            raise StoreError(
+                f"no pack is stored for {state.date}, so there is nothing to execute. Its hash is "
+                "on chain, so it cannot be regenerated — the round is over."
+            )
+
+        view = self.chain.view()
+        preparation = prepare_all(
+            view,
+            round_id=state.date,
+            chain=self.chain,
+            workspace=self.args.workspace / state.date,
+            limits=self.fetch_limits,
+        )
+        for refusal in preparation.refused:
+            _log.warning("uid %d refused: %s", refusal.uid, refusal.reason)
+
+        laboratories = list(preparation.ready)
+        reference = self.reference_laboratory()
+        if reference is not None:
+            # Run alongside the field, on the same pack under the same ceilings. A floor
+            # measured any other way drifts away from what a direct frontier-model call actually
+            # achieves as models improve.
+            laboratories.append(reference)
+
+        gateway = GatewayClient(
+            endpoint=self.args.rcg_endpoint, runner_token=self.runner_token
+        )
+        runner = self.build_runner(admit=gateway.admit, close=gateway.close)
+        executed = asyncio.run(
+            execute_round(
+                laboratories=laboratories,
+                challenges=pack.challenges,
+                runner=runner,
+                validator_hotkey=self.chain.hotkey(),
+                round_id=state.date,
+                limits=self.sandbox_limits,
+                allowed_models=self.allowed_models,
+                excluded_domains=self.taxonomy.excluded_domains,
+                deadline_block=deadline_block,
+                current_block=self.chain.current_block,
+                episode_seconds=self.episode_seconds,
+                concurrency=self.args.concurrency,
+            )
         )
 
-    execute_step._not_implemented = True  # type: ignore[attr-defined]
+        # Persisted before the state is returned. Scoring runs in a later step, after the
+        # execution-close boundary, so the portfolios have to survive the gap between them — and
+        # they cost real money to produce, so losing them to a restart loses the round.
+        self.store.write_executions(
+            state.date,
+            as_document(executed, refused=preparation.refused),
+            ttl_days=self.generation.dedup_lookback_days,
+        )
+
+        labs = tuple(
+            LabStatus(
+                uid=uid,
+                hotkey=items[0].hotkey,
+                state="complete" if all(not item.not_attempted for item in items) else "partial",
+                challenges_done=sum(1 for item in items if item.result is not None),
+                challenges_total=len(pack.challenges),
+                failed_gates=tuple(sorted({gate for item in items for gate in item.failed_gates})),
+                rcc_spent=sum(item.measured_rcc for item in items),
+            )
+            for uid, items in sorted(executed.by_uid.items())
+            if uid != self.REFERENCE_UID
+        )
+        return replace(state, labs=labs, block=block)
 
     def score_step(self, state: RoundState, *, block: int, deadline_block: int) -> RoundState:
-        """Prior art, screening, the pairwise tournament, and the daily and rolling scores.
+        """14 to 18: neutralise, screen, select a cohort, judge, and reduce to standings."""
+        stored = self.store.read_executions(state.date)
+        if stored is None:
+            raise StoreError(
+                f"no executions are stored for {state.date}. They cannot be re-run: the execution "
+                "window has closed, and running now would give these laboratories a window nobody "
+                "else had."
+            )
+        pack = self.store.read_pack(state.date)
+        if pack is None:
+            raise StoreError(f"no pack is stored for {state.date}, so nothing can be judged")
 
-        Not implemented, for the same reason. Every piece is built and unit-tested — `report`,
-        `screen_portfolio`, `swiss_pairings`, `combine_orders`, `fit`, `aggregate`,
-        `challenge_score`, `daily_score`, `rolling_score` — and nothing composes them over a round's
-        executions — which is what turns per-portfolio numbers into the standings that
-        `submit_weights_step` reads.
-        """
-        raise NotImplementedError(
-            "score is not implemented: the per-round composition of prior art, screening, the "
-            "tournament and the score ladder is missing. See Validator.score_step."
+        executed = from_document(stored)
+        client = self.model_client(run_id=f"judge-{state.date}")
+        scores = asyncio.run(
+            score_round(
+                execution=executed,
+                challenges=pack.challenges,
+                client=client,
+                panels=self.panels,
+                funnel=self.funnel,
+                scoring=self.scoring,
+                daily=self.daily,
+                seed=bytes.fromhex(state.salt_hex) if state.salt_hex else b"",
+                round_id=state.date,
+                history=self.history_for(sorted(executed.by_uid)),
+            )
         )
 
-    score_step._not_implemented = True  # type: ignore[attr-defined]
+        floor_ppm = self.reference_floor_ppm(scores)
+        standings = tuple(
+            StandingEntry(
+                uid=lab.uid,
+                hotkey=lab.hotkey,
+                rolling_score_ppm=lab.rolling_ppm,
+                daily_score_ppm=lab.daily_ppm,
+                valid_challenges=lab.valid_challenges,
+                family_gap_ppm=lab.family_gap_ppm,
+                qualified=lab.rolling_ppm > floor_ppm and not lab.failed_gates,
+                weight_ppm=0,
+            )
+            for lab in scores.labs
+            # The reference defines the floor; it is not a competitor and cannot be paid.
+            if lab.uid != self.REFERENCE_UID
+        )
+        _log.info(
+            "round %s scored: %d laboratories, %d qualified above %d ppm",
+            state.date,
+            len(standings),
+            sum(1 for entry in standings if entry.qualified),
+            floor_ppm,
+        )
+        return replace(state, standings=standings, floor_ppm=floor_ppm, block=block)
+
+    # ------------------------------------------------------------------
+    # 20.1's floor, and the history a rolling score needs
+    # ------------------------------------------------------------------
+
+    #: The uid the reference laboratory runs under. Negative because uids are non-negative on chain,
+    #: so it can never collide with a miner — and a collision would mean a miner's score silently
+    #: became the floor everyone else has to beat.
+    REFERENCE_UID = -1
+
+    def reference_laboratory(self) -> Prepared | None:
+        """20.1's qualification floor, as a laboratory to run alongside the field.
+
+        The floor is *the reference template's own rolling score*, so it has to be produced the same
+        way every other score is: same pack, same ceilings, same gates, same judges. A floor taken
+        from a constant would drift away from what a direct frontier-model call actually achieves as
+        models improve, and the subnet would end up paying for architecture that no longer adds
+        anything.
+
+        Funded by the validator's own credential, because the owner runs it and there is no miner to
+        bill. It is excluded from the standings — it earns nothing and cannot be paid.
+
+        Returns None when the season has no digest for it yet, and the caller must treat that as
+        "there is no floor today", not as "the floor is zero".
+        """
+        for entry in self.season["reference_labs"]:
+            if not entry.get("is_qualification_floor"):
+                continue
+            digest = str(entry.get("container_digest", ""))
+            if not digest.startswith("sha256:") or set(digest[7:]) == {"0"}:
+                _log.error(
+                    "the qualification-floor reference %s has no real container digest (%s). "
+                    "Without it there is no floor to beat, and 20.4 burns rather than paying a "
+                    "field nobody has measured against anything.",
+                    entry.get("name"),
+                    digest or "absent",
+                )
+                return None
+            return Prepared(
+                uid=self.REFERENCE_UID,
+                hotkey=self.chain.hotkey(),
+                bundle_digest="reference",
+                image_digest=digest,
+                manifest={"model_manifest": {"portfolio": str(entry.get("model_slug", ""))}},
+                api_key=load_validator_credential(self.chain.hotkey()).api_key,
+                declared_spend_cap_usd=0,
+                root=self.args.workspace,
+            )
+        return None
+
+    def reference_floor_ppm(self, scores: RoundScores) -> int:
+        """The floor for this round: the reference laboratory's own rolling score.
+
+        Zero when the reference did not produce one. That is the safe direction and it is not
+        silent — a floor of zero qualifies everyone, so it is logged as loudly as the code can, and
+        `allocate` still refuses to pay a laboratory whose gates failed.
+        """
+        for lab in scores.labs:
+            if lab.uid == self.REFERENCE_UID:
+                if lab.rolling_ppm:
+                    return lab.rolling_ppm
+                break
+        _log.error(
+            "the reference laboratory produced no score for this round, so there is no measured "
+            "floor. Every laboratory above zero qualifies, which is not what 20.1 asks for — check "
+            "the reference container digest and the validator's own credential."
+        )
+        return 0
+
+    def history_for(self, uids: Sequence[int]) -> dict[int, ScoreHistory]:
+        """Each laboratory's past daily scores, from the rounds this validator recorded.
+
+        Read from its own store rather than from the chain. Weights on chain are the *field's*
+        aggregate after allocation, not this validator's own measurement, so deriving history from
+        them would make a rolling score a function of what other validators concluded — and 17.5's
+        replication compares independent measurements, which those would no longer be.
+        """
+        dates: dict[int, list[str]] = {uid: [] for uid in uids}
+        scores: dict[int, list[int]] = {uid: [] for uid in uids}
+        for past in reversed(self.round_store.recent(self.daily.rolling_long_days)):
+            for entry in past.standings:
+                if entry.uid in dates:
+                    dates[entry.uid].append(past.date)
+                    scores[entry.uid].append(entry.daily_score_ppm)
+        return {
+            uid: ScoreHistory(dates=dates[uid], scores_ppm=scores[uid]) for uid in uids
+        }
 
     def unimplemented_steps(self) -> tuple[str, ...]:
         """Which steps cannot run yet.
