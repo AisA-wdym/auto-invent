@@ -495,7 +495,7 @@
           "minimum": 0
         },
         "reference_floor_lab": {
-          "description": "Which reference lab sets the qualification floor. Section 25: Reference A is the direct frontier-model baseline, so it is part of the reward mechanism rather than a demonstration.",
+          "description": "Which entry in reference_labs is the qualification floor of 20.1. Named rather than positional, so reordering the probe configurations cannot silently change the floor.",
           "type": "string",
           "maxLength": 50
         }
@@ -551,15 +551,16 @@
       }
     },
     "reference_labs": {
-      "description": "Section 25's four bundles, by digest. Pinned because Reference A is the qualification floor: a floor that could change without a rules change would silently move every miner's eligibility.",
+      "description": "Configurations of the single reference template (section 25), by digest. The owner ships one miner template rather than four architectures; these are variations of it \u2014 different models, different temperatures \u2014 and they exist for two reasons. The first entry is the qualification floor of 20.1, pinned because a floor that could change without a rules change would silently move every miner's eligibility. The rest give 7.4 step 5's discrimination probe something to measure spread across: a probe with one configuration cannot tell an easy problem from a hard one, because condition 1 asks whether every reference produced essentially the same answer.",
       "type": "array",
-      "minItems": 1,
+      "minItems": 2,
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": [
           "name",
-          "container_digest"
+          "container_digest",
+          "model_slug"
         ],
         "properties": {
           "name": {
@@ -568,6 +569,19 @@
           },
           "container_digest": {
             "$ref": "#/$defs/hash"
+          },
+          "model_slug": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "temperature_ppm": {
+            "description": "Sampling temperature in parts-per-million, so the probe's configuration carries no float into anything hashed.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2000000
+          },
+          "is_qualification_floor": {
+            "type": "boolean"
           }
         }
       }

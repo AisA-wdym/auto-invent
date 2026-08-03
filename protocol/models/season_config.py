@@ -363,7 +363,7 @@ class WeightAllocation(ProtocolModel):
     )
     reference_floor_lab: constr(max_length=50) | None = Field(
         None,
-        description='Which reference lab sets the qualification floor. Section 25: Reference A is the direct frontier-model baseline, so it is part of the reward mechanism rather than a demonstration.',
+        description='Which entry in reference_labs is the qualification floor of 20.1. Named rather than positional, so reordering the probe configurations cannot silently change the floor.',
     )
 
 
@@ -373,6 +373,12 @@ class ReferenceLab(ProtocolModel):
     )
     name: constr(max_length=50)
     container_digest: constr(pattern=r'^sha256:[0-9a-f]{64}$')
+    model_slug: constr(max_length=200)
+    temperature_ppm: conint(ge=0, le=2000000) | None = Field(
+        None,
+        description="Sampling temperature in parts-per-million, so the probe's configuration carries no float into anything hashed.",
+    )
+    is_qualification_floor: bool | None = None
 
 
 class SeasonConfig(ProtocolModel):
@@ -430,8 +436,8 @@ class SeasonConfig(ProtocolModel):
     )
     reference_labs: list[ReferenceLab] = Field(
         ...,
-        description="Section 25's four bundles, by digest. Pinned because Reference A is the qualification floor: a floor that could change without a rules change would silently move every miner's eligibility.",
-        min_length=1,
+        description="Configurations of the single reference template (section 25), by digest. The owner ships one miner template rather than four architectures; these are variations of it — different models, different temperatures — and they exist for two reasons. The first entry is the qualification floor of 20.1, pinned because a floor that could change without a rules change would silently move every miner's eligibility. The rest give 7.4 step 5's discrimination probe something to measure spread across: a probe with one configuration cannot tell an easy problem from a hard one, because condition 1 asks whether every reference produced essentially the same answer.",
+        min_length=2,
     )
     providers: Providers | None = Field(
         None,

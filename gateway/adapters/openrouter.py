@@ -78,14 +78,25 @@ class ModelPin:
     def qualified(self) -> str:
         """What goes on the wire.
 
-        OpenRouter expresses a pinned version as `slug@snapshot`. When the snapshot is the
-        sentinel the season config ships with, the bare slug is sent — an operator who has not
-        yet chosen snapshots gets a working system rather than a mysteriously empty one, and
-        `assert_pinned` is where a production deployment refuses that state.
+        OpenRouter has no `slug@version` syntax: a pinned version *is* a distinct slug, dated by the
+        provider — `openai/gpt-4o` is the moving route and `openai/gpt-4o-2024-08-06` is the frozen
+        one. So `model_snapshot` holds the immutable slug and `model_slug` holds the readable route,
+        and this sends the snapshot whenever there is one.
+
+        Two fields rather than one because they answer different questions. `model_slug` is what the
+        season *meant* ("the Claude judge"), and it stays stable in a config a human edits across
+        seasons. `model_snapshot` is what was *sent*, and it is what a receipt records and 27
+        reconciles against — so a provider retiring a dated slug changes one field and leaves the
+        other as the record of intent.
+
+        The bare slug is sent when the snapshot is still the config's placeholder, so an operator
+        part-way through provisioning gets a working system rather than a mysteriously empty one.
+        `assert_pinned` is where a production deployment refuses that state, and both `--check`
+        paths call it.
         """
         if not self.snapshot or self.snapshot.startswith("<"):
             return self.slug
-        return f"{self.slug}@{self.snapshot}"
+        return self.snapshot
 
     def assert_pinned(self) -> None:
         """Refuse an unpinned model. Called by the validator at season start.

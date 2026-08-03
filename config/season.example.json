@@ -54,7 +54,7 @@
       {
         "family": "gpt",
         "provider": "openrouter",
-        "model_snapshot": "<fixed season snapshot>",
+        "model_snapshot": "openai/gpt-5.2",
         "slots": 10,
         "critic_family": "gpt",
         "model_slug": "openai/gpt-5.2"
@@ -62,7 +62,7 @@
       {
         "family": "claude",
         "provider": "openrouter",
-        "model_snapshot": "<fixed season snapshot>",
+        "model_snapshot": "anthropic/claude-sonnet-5",
         "slots": 10,
         "critic_family": "claude",
         "model_slug": "anthropic/claude-sonnet-5"
@@ -109,6 +109,54 @@
     "family_cap_ppm": 400000,
     "panels": [
       {
+        "criterion": "originality",
+        "reliability_floor_ppm": 900000,
+        "judges": [
+          {
+            "family": "anthropic",
+            "provider": "openrouter",
+            "model_slug": "anthropic/claude-sonnet-5",
+            "model_snapshot": "anthropic/claude-sonnet-5"
+          },
+          {
+            "family": "openai",
+            "provider": "openrouter",
+            "model_slug": "openai/gpt-5.2",
+            "model_snapshot": "openai/gpt-5.2"
+          },
+          {
+            "family": "google",
+            "provider": "openrouter",
+            "model_slug": "google/gemini-2.5-pro",
+            "model_snapshot": "google/gemini-2.5-pro"
+          }
+        ]
+      },
+      {
+        "criterion": "value",
+        "reliability_floor_ppm": 850000,
+        "judges": [
+          {
+            "family": "anthropic",
+            "provider": "openrouter",
+            "model_slug": "anthropic/claude-sonnet-5",
+            "model_snapshot": "anthropic/claude-sonnet-5"
+          },
+          {
+            "family": "openai",
+            "provider": "openrouter",
+            "model_slug": "openai/gpt-5.2",
+            "model_snapshot": "openai/gpt-5.2"
+          },
+          {
+            "family": "google",
+            "provider": "openrouter",
+            "model_slug": "google/gemini-2.5-pro",
+            "model_snapshot": "google/gemini-2.5-pro"
+          }
+        ]
+      },
+      {
         "criterion": "mechanism",
         "reliability_floor_ppm": 900000,
         "judges": [
@@ -116,19 +164,139 @@
             "family": "anthropic",
             "provider": "openrouter",
             "model_slug": "anthropic/claude-sonnet-5",
-            "model_snapshot": "<fixed season snapshot>"
+            "model_snapshot": "anthropic/claude-sonnet-5"
           },
           {
             "family": "openai",
             "provider": "openrouter",
             "model_slug": "openai/gpt-5.2",
-            "model_snapshot": "<fixed season snapshot>"
+            "model_snapshot": "openai/gpt-5.2"
           },
           {
             "family": "google",
             "provider": "openrouter",
             "model_slug": "google/gemini-2.5-pro",
-            "model_snapshot": "<fixed season snapshot>"
+            "model_snapshot": "google/gemini-2.5-pro"
+          }
+        ]
+      },
+      {
+        "criterion": "constraint_fit",
+        "reliability_floor_ppm": 880000,
+        "judges": [
+          {
+            "family": "anthropic",
+            "provider": "openrouter",
+            "model_slug": "anthropic/claude-sonnet-5",
+            "model_snapshot": "anthropic/claude-sonnet-5"
+          },
+          {
+            "family": "openai",
+            "provider": "openrouter",
+            "model_slug": "openai/gpt-5.2",
+            "model_snapshot": "openai/gpt-5.2"
+          },
+          {
+            "family": "google",
+            "provider": "openrouter",
+            "model_slug": "google/gemini-2.5-pro",
+            "model_snapshot": "google/gemini-2.5-pro"
+          }
+        ]
+      },
+      {
+        "criterion": "diversity",
+        "reliability_floor_ppm": 830000,
+        "judges": [
+          {
+            "family": "anthropic",
+            "provider": "openrouter",
+            "model_slug": "anthropic/claude-sonnet-5",
+            "model_snapshot": "anthropic/claude-sonnet-5"
+          },
+          {
+            "family": "openai",
+            "provider": "openrouter",
+            "model_slug": "openai/gpt-5.2",
+            "model_snapshot": "openai/gpt-5.2"
+          },
+          {
+            "family": "google",
+            "provider": "openrouter",
+            "model_slug": "google/gemini-2.5-pro",
+            "model_snapshot": "google/gemini-2.5-pro"
+          }
+        ]
+      },
+      {
+        "criterion": "self_selection",
+        "reliability_floor_ppm": 820000,
+        "judges": [
+          {
+            "family": "anthropic",
+            "provider": "openrouter",
+            "model_slug": "anthropic/claude-sonnet-5",
+            "model_snapshot": "anthropic/claude-sonnet-5"
+          },
+          {
+            "family": "openai",
+            "provider": "openrouter",
+            "model_slug": "openai/gpt-5.2",
+            "model_snapshot": "openai/gpt-5.2"
+          },
+          {
+            "family": "google",
+            "provider": "openrouter",
+            "model_slug": "google/gemini-2.5-pro",
+            "model_snapshot": "google/gemini-2.5-pro"
+          }
+        ]
+      },
+      {
+        "criterion": "falsifiability",
+        "reliability_floor_ppm": 850000,
+        "judges": [
+          {
+            "family": "anthropic",
+            "provider": "openrouter",
+            "model_slug": "anthropic/claude-sonnet-5",
+            "model_snapshot": "anthropic/claude-sonnet-5"
+          },
+          {
+            "family": "openai",
+            "provider": "openrouter",
+            "model_slug": "openai/gpt-5.2",
+            "model_snapshot": "openai/gpt-5.2"
+          },
+          {
+            "family": "google",
+            "provider": "openrouter",
+            "model_slug": "google/gemini-2.5-pro",
+            "model_snapshot": "google/gemini-2.5-pro"
+          }
+        ]
+      },
+      {
+        "criterion": "cost_reliability",
+        "reliability_floor_ppm": 800000,
+        "judges": [
+          {
+            "family": "anthropic",
+            "provider": "openrouter",
+            "model_slug": "anthropic/claude-sonnet-5",
+            "model_snapshot": "anthropic/claude-sonnet-5"
+          },
+          {
+            "family": "openai",
+            "provider": "openrouter",
+            "model_slug": "openai/gpt-5.2",
+            "model_snapshot": "openai/gpt-5.2"
+          },
+          {
+            "family": "google",
+            "provider": "openrouter",
+            "model_slug": "google/gemini-2.5-pro",
+            "model_snapshot": "google/gemini-2.5-pro"
           }
         ]
       }
@@ -143,7 +311,7 @@
     "maximum_weight_ppm": 175000,
     "minimum_valid_challenges": 6,
     "burn_uid": 0,
-    "reference_floor_lab": "reference_a"
+    "reference_floor_lab": "template_sonnet"
   },
   "cycle": {
     "blocks_per_day": 7200,
@@ -157,20 +325,32 @@
   },
   "reference_labs": [
     {
-      "name": "reference_a",
-      "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      "name": "template_sonnet",
+      "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "model_slug": "anthropic/claude-sonnet-5",
+      "temperature_ppm": 700000,
+      "is_qualification_floor": true
     },
     {
-      "name": "reference_b",
-      "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+      "name": "template_gpt",
+      "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "model_slug": "openai/gpt-5.2",
+      "temperature_ppm": 700000,
+      "is_qualification_floor": false
     },
     {
-      "name": "reference_c",
-      "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002"
+      "name": "template_gemini",
+      "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "model_slug": "google/gemini-2.5-pro",
+      "temperature_ppm": 700000,
+      "is_qualification_floor": false
     },
     {
-      "name": "reference_d",
-      "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000003"
+      "name": "template_sonnet_cold",
+      "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "model_slug": "anthropic/claude-sonnet-5",
+      "temperature_ppm": 100000,
+      "is_qualification_floor": false
     }
   ],
   "providers": {

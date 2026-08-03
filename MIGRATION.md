@@ -72,7 +72,7 @@ with its tests.
 | `validator/prior_art/` | §15. Retrieval against papers, patents, repositories, products, standards, and prior challenge answers. §15's constraint matters: *never assert absolute novelty* — only difference from **searchable** prior art. |
 | `validator/judge/{pairwise,bradley_terry,pointwise,calibration}.py` | §16–§17, §19. |
 | `protocol/schemas/{challenge,portfolio,model_manifest}.json` | §8, §9.2, §5.3. |
-| `miner/reference/{single_agent,multi_agent,idea_islands,evolutionary_lab}/` | §25. Reference A is also the **qualification floor** (§20.1), so it is not a demo — it is part of the reward mechanism. |
+| `miner/reference/template.py` | §25, as amended by the owner: **one** miner template rather than four reference architectures. It is the **qualification floor** (§20.1), so it is not a demo — it is part of the reward mechanism, and it has to be genuinely good or the floor is easy. The discrimination probe (§7.4 step 5) runs it in several declared configurations, because condition 1 measures spread and one configuration has none. |
 | `tests/measurement/` | §27's fifteen gates. These decide mainnet, so they are tests, not a report. |
 
 ---

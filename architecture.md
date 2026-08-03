@@ -1596,48 +1596,52 @@ The `sim_user/` component is removed entirely from the V1 validator architecture
 
 ---
 
-# 25. Reference miner laboratories
+# 25. The reference laboratory
 
-The owner should ship four open reference bundles.
+The owner ships **one** open reference bundle: a miner template. It is not one of a set of
+architectures to choose between — it is the starting point every miner forks, and it is the
+qualification floor of 20.1.
 
-## Reference A — Frontier Single Agent
+This supersedes an earlier version of this section, which shipped four reference bundles (a single
+agent, a planner–researcher–critic loop, independent idea islands, and an evolutionary lab). Three
+of those were demonstrations of what beating the floor could look like, and they were dropped: a
+miner does not need the owner to show them three architectures, and three unmaintained reference
+repositories decay into three misleading examples.
 
-One strong model receives the challenge and produces the portfolio using a carefully designed system prompt.
+## The template
 
-Purpose:
+One strong model, one carefully structured request, the full portfolio structure of 9.2. It is
+deliberately the *strongest single-agent form* — it asks the model to diverge before it selects, and
+to select for difference rather than for preference, which is one model doing what a multi-agent
+laboratory does with separate agents.
 
-* represents ordinary direct Claude/GPT research use;
-* defines the minimum baseline miners must beat.
+That strength is the point. The template defines the floor, so a weak template would make the floor
+easy and the subnet would pay for laboratories that beat nothing. A miner earns emission by beating
+a genuinely good single-agent laboratory with architecture.
 
-## Reference B — Planner–Researcher–Critic
+`ail-miner init` writes it, and it runs on the first invocation. A scaffold that fails is
+indistinguishable from a broken environment, and a miner cannot debug the difference.
 
-A small multi-agent system:
+## The discrimination probe needs several configurations, not several architectures
 
-```text
-Planner
-→ researchers
-→ prior-art critic
-→ portfolio selector
-```
+7.4 step 5 rejects a candidate problem if "every reference produces essentially the same answer".
+That is a measurement of *spread*, and spread needs more than one reference — a probe with a single
+configuration cannot tell an easy problem from a hard one, because there is nothing for the answers
+to differ from.
 
-## Reference C — Independent Idea Islands
+With one template, the probe runs it in several declared configurations instead: the same bundle
+under different models and different temperatures. `reference_labs` in the season config is that
+list, its first entry is the qualification floor, and the schema requires at least two so a
+configuration cannot silently reduce the probe to an unmeasurable single run.
 
-Five isolated idea-generation branches using different perspectives. They do not share outputs until final synthesis.
+Configurations rather than architectures is a real weakening of condition 1, and worth naming: two
+temperatures of one model differ less than two genuinely different laboratory designs would, so the
+measured spread is smaller and the threshold must be read against that. What it does not weaken is
+condition 5 — the degradation check, which asks whether a judge panel can tell a damaged portfolio
+from a whole one, needs only one reference and is the sharpest of the five conditions regardless.
 
-## Reference D — Evolutionary Lab
-
-```text
-generate
-→ evaluate
-→ mutate
-→ cross
-→ archive
-→ select
-```
-
-The protocol does not require miners to copy these structures.
-
-They are baselines and starter templates.
+The protocol does not require miners to keep the template's structure. It is a starting point, and
+the whole mechanism is built to reward leaving it behind.
 
 ---
 
