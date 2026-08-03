@@ -66,7 +66,7 @@ from protocol.receipts import Purpose
 from validator.challenge_factory.generator import Candidate
 from validator.model_client import ModelClient
 
-__all__ = ["CHECKS", "CriticVerdict", "review", "review_all"]
+__all__ = ["CHECKS", "CriticVerdict", "review"]
 
 _log = logging.getLogger(__name__)
 
@@ -293,14 +293,3 @@ def _verdict(
         unrecognised=unrecognised,
     )
 
-
-async def review_all(
-    client: ModelClient, candidates: Sequence[Candidate]
-) -> list[tuple[Candidate, CriticVerdict]]:
-    """Review many candidates concurrently, pairing each with its verdict."""
-    import asyncio
-
-    verdicts = await asyncio.gather(
-        *(review(client, candidate) for candidate in candidates), return_exceptions=False
-    )
-    return list(zip(candidates, verdicts, strict=True))

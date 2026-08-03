@@ -1,0 +1,113 @@
+# architecture.md 10. The topology *is* the egress control.
+#
+# Two networks, and the split is the whole point:
+#
+#   sandbox   internal: no NAT, so no container on it can reach the internet. Laboratories live
+#             here, and the only other thing on it is the gateway.
+#   upstream  ordinary bridge, reaching OpenRouter and the subtensor endpoint. The gateway and the
+#             validator are on it; laboratories are not.
+#
+# The gateway sits on both. That is what makes it the only path out, and why it holds the credential
+# rather than the laboratory: `--network none` would give a laboratory no internet *and* no gateway,
+# and any network that reaches the gateway reaches whatever else is on it.
+
+name: auto-invent
+
+networks:
+  sandbox:
+    name: auto-invent-sandbox
+    internal: true          # the control. Removes the NAT rule; there is no route out.
+  upstream:
+    name: auto-invent-upstream
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: auto-invent-redis
+    # Loopback only. A laboratory that could reach Redis could read the whole challenge pack —
+    # every problem including ones it has not been given, and other rounds' packs. The validator
+    # refuses to start against a Redis on 0.0.0.0, but the binding is the actual protection.
+    ports:
+      - "127.0.0.1:6379:6379"
+    networks:
+      - upstream            # deliberately NOT on `sandbox`
+    command: >
+      redis-server
+      --save 900 1
+      --appendonly yes
+      --maxmemory 2gb
+      --maxmemory-policy noeviction
+    # noeviction, not allkeys-lru: a pack whose hash is already committed on chain must not be
+    # evicted under memory pressure. It cannot be regenerated — the seed's randomness has passed.
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  rcg:
+    build:
+      context: ..
+      dockerfile: ops/Dockerfile.gateway
+    container_name: auto-invent-rcg
+    networks:
+      - sandbox             # so laboratories can reach it
+      - upstream            # so it can reach OpenRouter
+    environment:
+      AI_VALIDATOR_HOTKEY: "${AI_VALIDATOR_HOTKEY:?set AI_VALIDATOR_HOTKEY in ops/.env}"
+      AI_VALIDATOR_OPENROUTER_KEY_FILE: /run/secrets/openrouter
+      # Generate with: openssl rand -hex 32
+      AI_RUNNER_SECRET: "${AI_RUNNER_SECRET:?set AI_RUNNER_SECRET in ops/.env}"
+    secrets:
+      - openrouter
+    # Not published to the host. The validator reaches it over `upstream` by name; nothing outside
+    # these two networks needs to, and publishing it would put a spending endpoint on the host.
+    expose:
+      - "8081"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8081/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  validator:
+    build:
+      context: ..
+      dockerfile: ops/Dockerfile.validator
+    container_name: auto-invent-validator
+    depends_on:
+      redis: {condition: service_healthy}
+      rcg: {condition: service_healthy}
+    networks:
+      - upstream            # NOT on `sandbox`: it has no reason to be reachable by a laboratory
+    environment:
+      AI_NETUID: "${AI_NETUID:?set AI_NETUID in ops/.env}"
+      AI_NETWORK: ${AI_NETWORK:-finney}
+      AI_WALLET: ${AI_WALLET:-default}
+      AI_HOTKEY: ${AI_HOTKEY:-default}
+      AI_RCG_ENDPOINT: http://rcg:8081
+      AI_REDIS_URL: redis://redis:6379/0
+      AI_RUNNER_SECRET: "${AI_RUNNER_SECRET:?}"
+      # The gateway resolves `rcg` on the sandbox network; a laboratory is given this address and
+      # can reach nothing else.
+    volumes:
+      # The Docker socket, so laboratories run as sibling containers. See Dockerfile.validator for
+      # what this privilege is and why it is bounded.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOME}/.bittensor/wallets:/root/.bittensor/wallets:ro
+      - validator-runs:/app/var/runs
+    restart: unless-stopped
+
+secrets:
+  openrouter:
+    # The validator's own OpenRouter account. Never a miner's — see architecture.md 3.4.4.
+    file: ./secrets/openrouter.key
+
+volumes:
+  redis-data:
+  validator-runs:

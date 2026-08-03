@@ -56,16 +56,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 # The flat layout architecture.md section 24 specifies, rather than a src/ package.
-packages = [
-    "protocol",
-    "chain",
-    "registry",
-    "gateway",
-    "validator",
-    "miner",
-    "portal",
-    "ops",
-]
+packages = ["protocol", "chain", "gateway", "validator", "miner", "ops"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

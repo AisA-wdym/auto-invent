@@ -47,16 +47,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 #: Packages that ship. `tests/` and `tools/` are excluded by construction.
-SOURCE_PACKAGES = (
-    "protocol",
-    "chain",
-    "registry",
-    "gateway",
-    "validator",
-    "miner",
-    "portal",
-    "ops",
-)
+SOURCE_PACKAGES = ("protocol", "chain", "gateway", "validator", "miner", "ops")
 
 #: Process entry points. Anything unreachable from one of these does not run in production,
 #: whatever the tests say.

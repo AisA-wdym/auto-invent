@@ -1,0 +1,27 @@
+# The validator. architecture.md 3.2.
+#
+# Needs the Docker socket, because it runs miner laboratories in sibling containers. That is a
+# genuine privilege and worth naming: a process with the socket can start a privileged container.
+# The mitigation is that nothing miner-controlled reaches this process — laboratory code runs in the
+# sibling, and the only thing crossing back is a file in /output that is read with a bounded read.
+FROM python:3.12-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends docker.io ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY pyproject.toml /app/
+COPY protocol/ /app/protocol/
+COPY chain/ /app/chain/
+COPY gateway/ /app/gateway/
+COPY validator/ /app/validator/
+COPY miner/ /app/miner/
+COPY config/ /app/config/
+
+RUN pip install --no-cache-dir -e ".[validator]"
+
+# Runs as root because it drives the Docker socket. The laboratories it starts do not — see
+# validator/sandbox/container.py, which passes --user 1000:1000 --cap-drop=ALL.
+ENTRYPOINT ["python", "-m", "validator"]

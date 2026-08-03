@@ -26,15 +26,15 @@ survivors freely.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
 from protocol.receipts import Purpose
 from validator.challenge_factory.taxonomy import EXCLUDED_DOMAINS, Slot
-from validator.model_client import ModelClient, ModelReply, UnparseableReply
+from validator.model_client import ModelClient, ModelReply
 
-__all__ = ["Candidate", "GeneratorConfig", "generate_for_slot", "generate_pack_candidates"]
+__all__ = ["Candidate", "GeneratorConfig", "generate_for_slot"]
 
 _log = logging.getLogger(__name__)
 
@@ -268,45 +268,3 @@ def _as_body(result: ModelReply, slot: Slot) -> Mapping[str, Any] | None:
     body["critic_family"] = slot.critic_family
     return body
 
-
-async def generate_pack_candidates(
-    client: ModelClient,
-    *,
-    slots: Sequence[Slot],
-    config: GeneratorConfig,
-    excluded: frozenset[str] = EXCLUDED_DOMAINS,
-) -> dict[int, list[Candidate]]:
-    """Candidates for every slot, keyed by slot index.
-
-    Slots run concurrently too. The bound on concurrency is the provider's rate limit rather than
-    anything here — twenty slots of four is eighty calls, and a validator that issued them
-    serially would spend most of its generation window waiting.
-    """
-    import asyncio
-
-    results = await asyncio.gather(
-        *(
-            generate_for_slot(client, slot=slot, config=config, excluded=excluded)
-            for slot in slots
-        ),
-        return_exceptions=True,
-    )
-    pack: dict[int, list[Candidate]] = {}
-    for slot, result in zip(slots, results, strict=True):
-        if isinstance(result, BaseException):
-            _log.error("slot %d produced no candidates at all: %s", slot.index, result)
-            pack[slot.index] = []
-            continue
-        pack[slot.index] = result
-    return pack
-
-
-def unparseable_is_a_rejection(error: Exception) -> bool:
-    """Whether a failure should count as a rejected candidate rather than an outage.
-
-    The distinction decides whether the pipeline retries the slot or gives up on the day. A
-    model that returned prose is a rejected candidate; a model that could not be reached is an
-    operational failure, and treating the second as the first would burn every candidate in the
-    pack against an unreachable provider.
-    """
-    return isinstance(error, UnparseableReply)

@@ -50,7 +50,6 @@ from validator.model_client import ModelClient, ModelReply
 
 __all__ = [
     "PairVerdict",
-    "SwissRound",
     "combine_orders",
     "compare_pair",
     "swiss_pairings",
@@ -126,16 +125,6 @@ class PairVerdict:
         if self.abstained or self.winner == "tie":
             return None
         return self.slot_a if self.winner == "A" else self.slot_b
-
-
-@dataclass(frozen=True, slots=True)
-class SwissRound:
-    """One round's pairings, and which challenge each was judged on."""
-
-    number: int
-    pairs: tuple[tuple[int, int], ...]
-    #: pair index -> challenge id. 17.3: "pairings are balanced by challenge".
-    challenges: tuple[str, ...]
 
 
 def swiss_pairings(

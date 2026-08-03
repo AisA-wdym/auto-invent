@@ -49,7 +49,6 @@ from protocol.fixedpoint import PPM, clamp_ppm
 __all__ = [
     "Match",
     "PriorArtReport",
-    "SearchResult",
     "assess_renaming",
     "novelty_confidence_ppm",
 ]
@@ -60,18 +59,6 @@ _log = logging.getLogger(__name__)
 #: rejection threshold — an idea may legitimately build on very similar art — but the level at
 #: which `renaming_only` becomes the live question.
 SAME_MECHANISM_PPM = 780_000
-
-
-@dataclass(frozen=True, slots=True)
-class SearchResult:
-    """One thing the search found. What a provider returned, before any judgement."""
-
-    source: str
-    url: str
-    excerpt: str
-    #: Which corpus it came from, from 15's list. Kept because the corpora are not equivalent: a
-    #: granted patent claiming the mechanism is a different fact from a blog post describing it.
-    corpus: str = "web"
 
 
 @dataclass(frozen=True, slots=True)
