@@ -96,8 +96,26 @@ jobs:
       - uses: actions/checkout@v4
       - name: gateway image
         run: docker build -f ops/Dockerfile.gateway -t auto-invent-gateway:ci .
+
+      - name: the gateway image actually starts and serves
+        # Building is not running. The first version of this job only built, and shipped a gateway
+        # image that could not start because the Dockerfile never copied config/ — the season config
+        # it needs for the RCC price table. `--check` passed in CI because it ran from the source
+        # tree, where the relative path happens to resolve.
+        run: |
+          docker run --rm auto-invent-gateway:ci --check
+          docker run -d --name rcg -p 127.0.0.1:8081:8081 \
+            -e AI_VALIDATOR_HOTKEY=5Gci -e AI_VALIDATOR_OPENROUTER_KEY=sk-or-ci-not-a-real-key \
+            auto-invent-gateway:ci --host 0.0.0.0 --port 8081
+          for _ in $(seq 30); do curl -sf http://127.0.0.1:8081/health && break; sleep 1; done
+          curl -sf http://127.0.0.1:8081/health | grep -q '"status":"ok"'
+          docker rm -f rcg
+
       - name: validator image
         run: docker build -f ops/Dockerfile.validator -t auto-invent-validator:ci .
+
+      - name: the validator image actually starts
+        run: docker run --rm auto-invent-validator:ci --check --season config/season.testnet.json
       - name: the build context excludes credentials
         # .dockerignore is the control; this is the check that it holds. A context containing .env
         # puts a live provider key within reach of the daemon's cache and of any later COPY.

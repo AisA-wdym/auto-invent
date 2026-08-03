@@ -275,9 +275,9 @@ def command_init(args: argparse.Namespace) -> int:
         return 1
     (root / "src").mkdir(parents=True, exist_ok=True)
 
-    from miner.reference.template import SCAFFOLD
+    from miner.reference.template import scaffold
 
-    for name, content in SCAFFOLD.items():
+    for name, content in scaffold().items():
         target = root / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
@@ -426,7 +426,16 @@ def _parser() -> argparse.ArgumentParser:
     seal = sub.add_parser("seal", help="build the sealed bundle and credential envelope")
     seal.add_argument("path", type=Path, nargs="?", default=Path("."))
     seal.add_argument("--out", type=Path, default=Path("sealed"))
-    seal.add_argument("--spend-cap", type=int, default=25, help="declared_spend_cap_usd (5.4.1)")
+    seal.add_argument(
+        "--spend-cap",
+        type=int,
+        default=50,
+        help=(
+            "declared_spend_cap_usd (5.4.1). Default 50: one challenge at the season ceiling costs "
+            "roughly $2 against a frontier model, and a twenty-challenge day is about $40 — so 25 "
+            "would have run out mid-round."
+        ),
+    )
     seal.add_argument("--force", action="store_true", help="seal despite non-credential findings")
     seal.set_defaults(handler=command_seal)
 

@@ -107,13 +107,33 @@ _INJECTION_TARGETS = (
     r"the (?:system|judge|scoring) prompt",
     r"your instructions?",
 )
+#: A directive aimed at a scorer. Every pattern requires the instruction to be *addressed* — to a
+#: reader, or at the submission — rather than merely containing scoring vocabulary.
+#:
+#: The first version matched `(?:award|assign|give|rate|score)` within forty characters of
+#: `(?:maximum|full|highest|…)`, and a real portfolio failed this fatal gate on the phrase
+#: **"rate faster than the maximum"** — a sentence about rate limiting. Both words are ordinary
+#: technical English ("error rate", "sample rate", "maximum throughput"), so co-occurrence carries
+#: almost no signal. What carries signal is the *imperative*: a verb pointed at a grader, or at the
+#: thing being graded.
+#:
+#: This is the direction that matters. A missed subtle injection is neutralised anyway, because 14
+#: strips judge-directed text before judging. A false positive here invalidates an honest
+#: laboratory's whole response, and 13 makes that unappealable.
 _SCORING_DIRECTIVE = (
-    r"(?:award|assign|give|rate|score)[^.]{0,40}"
-    r"(?:maximum|full|highest|perfect|10/10|100%|top marks)",
-    r"you (?:must|should|will) (?:award|assign|give|rate|score)",
-    r"as (?:a|the) judge[^.]{0,40}(?:you must|award|assign)",
-    r"this (?:answer|portfolio|submission) (?:deserves|must receive|should receive)"
-    r"[^.]{0,30}(?:maximum|full|highest|top)",
+    # Addressed to a reader: "you must award", "please give this the highest".
+    r"\b(?:you|please)\s+(?:must\s+|should\s+|will\s+|need to\s+)?"
+    r"(?:award|assign|give|rate|score|grade|mark)\b",
+    # Addressed at the submission: "award this answer full marks", "score it 10/10".
+    r"\b(?:award|assign|give|rate|score|grade)\s+(?:this|it|these|the)\s*"
+    r"(?:answer|portfolio|submission|response|idea|entry)?\s*"
+    r"(?:the\s+)?(?:maximum|full|highest|perfect|top|10/10|100%)",
+    # Role-play framing: "as the judge, you must…", "acting as an evaluator, award…".
+    r"\bas (?:a|an|the) (?:judge|evaluator|grader|scorer|reviewer)\b[^.]{0,40}"
+    r"(?:you must|you should|award|assign|give|rate|score)",
+    # The submission asserting its own score.
+    r"\bthis (?:answer|portfolio|submission|response) (?:deserves|must receive|should receive|"
+    r"is worth)\b[^.]{0,30}(?:maximum|full|highest|top|perfect)",
 )
 
 _INJECTION = tuple(

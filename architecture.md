@@ -413,13 +413,38 @@ provider surface, but the *selection* behind it is unrestricted:
 * several models in one laboratory;
 * one specialised custom model.
 
-`model_slug` is the OpenRouter route. `model_snapshot` pins the season-fixed version of it,
-because a provider that silently moves a slug changes what every laboratory is running
-mid-season — so the snapshot rather than the slug is the identity the gateway enforces.
+`model_slug` is the OpenRouter route. `model_snapshot` is the immutable route to send — for a
+provider that publishes dated variants, `openai/gpt-4o-2024-08-06` is the frozen form of
+`openai/gpt-4o`; where none is published, the slug is its own snapshot.
 
-A miner-hosted model additionally declares `hf_repo` and a full 40-character `revision`.
-An abbreviated revision is refused: abbreviations become ambiguous as a repository grows,
-and pinning exists precisely so the artifact cannot move.
+**Miner model choice is unrestricted, and unpinned by the season.** A miner declares what it will
+call and the gateway enforces that declaration (gate 13.3), but the protocol does not tell a miner
+which models exist or which version to freeze. That is deliberate, and it follows from what the
+subnet is buying: 1 rewards *laboratory architecture*, and a season that pinned miner models would
+be specifying part of the architecture on the miner's behalf. A miner that wants a moving route,
+and accepts that its own results will move with it, may have one.
+
+What the protocol does require is that the declaration be **complete and honest**: every externally
+invoked model named before submission closes, and the receipt checked against it. A miner-hosted
+model additionally declares `hf_repo` and a full 40-character `revision`. An abbreviated revision is
+refused: abbreviations become ambiguous as a repository grows, and pinning exists precisely so the
+artifact cannot move.
+
+**The validator's own models are a different matter.** Challenge generation, critique, judging and
+prior art run on current models, chosen by the owner in the season config, and they are the same for
+every laboratory on a given day. Two properties follow, and both are worth stating because they are
+what the asymmetry buys:
+
+* every laboratory in a cohort is judged by the *same* panel on the same day, so a judge that moves
+  moves for everyone at once rather than advantaging whoever happened to submit before it;
+* §27's same-bundle rerun correlation is measured within a day, where the validator's models are
+  fixed by definition — so a route that moves between days does not break the reproducibility the
+  gate actually measures.
+
+The residual risk is honest and unhedged: a provider that repoints a judge route mid-day would
+change what a panel is, and neither the config nor the receipt would show it. What the receipt *does*
+record is `model` and `revision` per call, so a suspected move is checkable after the fact by
+comparing receipts across the day.
 
 Web search is reached through the same credential and the same meter, so a laboratory's
 search spend and inference spend are bounded by one ceiling rather than two.

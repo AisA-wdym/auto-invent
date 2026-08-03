@@ -31,12 +31,17 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import sys
 import urllib.error
 import urllib.request
 from typing import Any
 
-__all__ = ["SCAFFOLD", "build_prompt", "run"]
+__all__ = ["SCAFFOLD", "build_prompt", "run", "scaffold"]
+
+#: Output ceiling for the portfolio call. See the comment at the request site for the measurement
+#: that set it.
+_MAXIMUM_OUTPUT_TOKENS = 40_000
 
 #: The system prompt. States what a portfolio is *for*, because a model told only the output schema
 #: fills the fields without understanding which ones carry the judgement.
@@ -187,6 +192,92 @@ def build_prompt(challenge: dict[str, Any]) -> str:
     )
 
 
+def _declared_model() -> tuple[str, str]:
+    """The primary model from this bundle's `model_manifest.json`, as (slug, snapshot).
+
+    The manifest is the declaration the validator checks against (5.3), so the laboratory calls what
+    it declared rather than what an environment variable happens to say. `AIL_MODEL_SLUG` still
+    overrides, for local experimentation — but it overrides *both* fields, so an override cannot
+    produce the slug/snapshot mismatch that gate 13.4 exists to catch.
+    """
+    override = os.environ.get("AIL_MODEL_SLUG", "").strip()
+    if override:
+        return override, os.environ.get("AIL_MODEL_SNAPSHOT", override).strip()
+
+    manifest_path = os.environ.get("AIL_MODEL_MANIFEST", "/app/model_manifest.json")
+    try:
+        with open(manifest_path) as handle:
+            models = json.load(handle)["models"]
+    except (OSError, KeyError, json.JSONDecodeError) as error:
+        # No fallback slug. Guessing one would call a model this bundle never declared, which fails
+        # gate 13.3 — so failing here, before spending anything, is both cheaper and clearer.
+        raise SystemExit(
+            f"cannot read a declared model from {manifest_path}: {error}. Every externally invoked "
+            "model must be declared before submission closes (5.3), and calling an undeclared one "
+            "invalidates the response under gate 13.3."
+        ) from error
+    primary = models[0]
+    return primary["model_slug"], primary.get("model_snapshot", primary["model_slug"])
+
+
+def _parse_portfolio(content: str) -> dict[str, Any] | None:
+    """Read a portfolio out of a model reply, tolerantly. None if there is not one.
+
+    Three things models reliably do to JSON, all handled: wrap it in a ```json fence, preface it
+    with a sentence, and — the one that actually bit — run out of output tokens partway through,
+    leaving a structurally invalid document.
+
+    Truncation is *not* repaired. A portfolio cut off mid-idea is genuinely incomplete, and
+    inventing the rest would be fabricating content the model never produced. What is recovered is
+    the case where the JSON is complete but wrapped or prefaced, which is a formatting habit rather
+    than a failure. The distinction matters because gate 13.2 checks required fields, and a repaired
+    portfolio would be a miner's own laboratory lying to the validator on their behalf.
+    """
+    text = content.strip()
+    if text.startswith("```"):
+        text = text.removeprefix("```json").removeprefix("```").strip()
+        if text.endswith("```"):
+            text = text[:-3].strip()
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = None
+    if parsed is None:
+        # Take the first balanced object, ignoring braces inside strings — a problem statement about
+        # templating legitimately contains one.
+        start = text.find("{")
+        if start < 0:
+            return None
+        depth, in_string, escaped = 0, False, False
+        for index in range(start, len(text)):
+            character = text[index]
+            if escaped:
+                escaped = False
+                continue
+            if character == "\\":
+                escaped = True
+                continue
+            if character == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if character == "{":
+                depth += 1
+            elif character == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        parsed = json.loads(text[start : index + 1])
+                    except json.JSONDecodeError:
+                        return None
+                    break
+        else:
+            # Never closed: the reply ran out of tokens. Not repaired — see the docstring.
+            return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def run() -> int:
     """The laboratory's entry point, inside the container.
 
@@ -198,7 +289,12 @@ def run() -> int:
     output_dir = os.environ.get("AIL_OUTPUT_DIR", "/output")
     endpoint = os.environ.get("AIL_RCG_ENDPOINT", "")
     token = os.environ.get("AIL_SESSION_TOKEN", "")
-    model = os.environ.get("AIL_MODEL_SLUG", "anthropic/claude-sonnet-5")
+    # Read from the bundle's own manifest rather than hardcoded, and *both* fields are sent.
+    # Sending the slug without the snapshot is what an earlier version did, and it failed gate 13.4
+    # for the reference laboratory: the receipt recorded an empty revision while the manifest
+    # declared one, which reads as a model-revision mismatch. A qualification floor that fails a
+    # hard gate is a floor of zero, which every miner clears without doing anything.
+    model, snapshot = _declared_model()
 
     if not endpoint or not token:
         print("AIL_RCG_ENDPOINT and AIL_SESSION_TOKEN are required", file=sys.stderr)
@@ -213,11 +309,17 @@ def run() -> int:
             "challenge_id": challenge["challenge_id"],
             "purpose": "research",
             "model_slug": model,
+            "model_snapshot": snapshot,
             "messages": [
                 {"role": "system", "content": _SYSTEM},
                 {"role": "user", "content": build_prompt(challenge)},
             ],
-            "max_tokens": 16_384,
+            # 40,000, not 16,384. Measured: a five-idea portfolio against claude-sonnet-5 hit the
+            # 16,384 ceiling mid-JSON at 27,277 characters — about 70% of the way through — and the
+            # template then failed gate 13.1 with no output at all. A reference laboratory that
+            # routinely fails 13.1 makes the qualification floor zero, which every miner clears
+            # trivially. The ceiling has to fit the answer the prompt asks for.
+            "max_tokens": _MAXIMUM_OUTPUT_TOKENS,
             "temperature": 0.7,
             "response_format": {"type": "json_object"},
         }
@@ -247,10 +349,21 @@ def run() -> int:
         print(f"could not reach the RCG at {endpoint}: {error}", file=sys.stderr)
         return 1
 
-    try:
-        portfolio = json.loads(body["content"])
-    except (json.JSONDecodeError, KeyError) as error:
-        print(f"the model did not return a portfolio: {error}", file=sys.stderr)
+    content = body.get("content", "")
+    # The raw reply is written before it is parsed. A parse failure otherwise discards the only
+    # evidence of what went wrong, and 6.3 publishes this directory — so a miner debugging a failed
+    # round can see what their model actually said rather than only that it was unreadable.
+    os.makedirs(output_dir, exist_ok=True)
+    with open(os.path.join(output_dir, "raw_reply.txt"), "w") as handle:
+        handle.write(content)
+
+    portfolio = _parse_portfolio(content)
+    if portfolio is None:
+        print(
+            f"the model's reply ({len(content)} chars) is not a readable portfolio; "
+            "the raw text is in raw_reply.txt",
+            file=sys.stderr,
+        )
         return 1
 
     # The challenge id is overwritten rather than trusted from the model. A model that copied it
@@ -265,8 +378,41 @@ def run() -> int:
     return 0
 
 
-#: What `ail-miner init` writes. A laboratory that runs on the first invocation, because a miner
-#: cannot distinguish a broken scaffold from a broken environment.
+def _vendored_lab() -> str:
+    """This module's source, truncated before the scaffold definition.
+
+    Derived rather than reconstructed. Everything above `SCAFFOLD` is stdlib-only — `json`, `os`,
+    `sys`, `urllib` — so a verbatim copy runs inside the miner's container with nothing installed,
+    and it cannot drift from the implementation it is supposed to be a copy of.
+
+    The alternative, which shipped once, was to rebuild the file from `repr()`'d constants and
+    hand-joined function bodies. That produced a syntax error nobody saw, because the only thing
+    that would have caught it is running the scaffold — which is exactly what the scaffold exists
+    to guarantee works.
+    """
+    source = pathlib.Path(__file__).read_text()
+    cut = source.index("def _vendored_lab()")
+    header = (
+        '"""Reference A, vendored into your bundle so it runs with nothing installed.\n\n'
+        "Copied rather than imported on purpose: 6.1 fixes your bundle at the deadline, and an\n"
+        "import of a moving package is a dependency that can change after submission.\n\n"
+        "Edit freely. Beating this laboratory is what earns emission (20.1) — a bundle that only\n"
+        "runs it unchanged scores at the qualification floor and is paid nothing.\n"
+        '"""\n\n'
+    )
+    # Drop the original module docstring; the header above replaces it with a miner-facing one.
+    body = source[source.index('"""', source.index('"""') + 3) + 3 : cut].lstrip("\n")
+    return header + body
+
+
+def scaffold() -> dict[str, str]:
+    """Every file `ail-miner init` writes, including the vendored laboratory."""
+    return {**SCAFFOLD, "src/lab.py": _vendored_lab()}
+
+
+#: What `ail-miner init` writes, apart from `src/lab.py` — see `scaffold()`. A laboratory that runs
+#: on the first invocation, because a miner cannot distinguish a broken scaffold from a broken
+#: environment.
 SCAFFOLD: dict[str, str] = {
     "manifest.json": json.dumps(
         {
@@ -320,6 +466,10 @@ WORKDIR /app
 
 COPY --chown=1000:1000 src/ /app/src/
 COPY --chown=1000:1000 requirements.lock /app/
+# The model manifest, because the laboratory reads its own declaration rather than hardcoding a
+# slug — see `_declared_model`. A bundle that called a model it had not declared would fail gate
+# 13.3, and one that sent a slug without its snapshot fails 13.4.
+COPY --chown=1000:1000 model_manifest.json /app/
 
 # The laboratory reaches only the RCG, so it needs no HTTP client beyond the standard library.
 # Nothing is installed: fewer dependencies is fewer things that can move between submission and
@@ -357,89 +507,11 @@ from lab import run
 if __name__ == "__main__":
     sys.exit(run())
 ''',
-    "src/lab.py": (
-        '"""Reference A, vendored into the scaffold so it runs without installing this repo.\n\n'
-        "Copied rather than imported on purpose: a miner's bundle must be self-contained, because\n"
-        "6.1 fixes it at the deadline and an import of a moving package is a dependency that can\n"
-        "change after submission.\n\n"
-        "Edit freely. Beating this laboratory is what earns emission (20.1) — a bundle that only\n"
-        "runs it unchanged scores at the qualification floor and is paid nothing.\n"
-        '"""\n\n'
-        "# The implementation is `miner/reference/template.py` in the subnet repository.\n"
-        "# `ail-miner init` writes a working copy here.\n"
-        "from __future__ import annotations\n\n"
-        "import json\nimport os\nimport sys\nimport urllib.error\nimport urllib.request\n\n"
-        f"_SYSTEM = {_SYSTEM!r}\n\n"
-        f"_TEMPLATE = {_TEMPLATE!r}\n\n"
-        f"_SCHEMA_EXAMPLE = {_SCHEMA_EXAMPLE!r}\n\n"
-        "\n".join(
-            line
-            for line in (
-                "def build_prompt(challenge):",
-                "    return _TEMPLATE.format(",
-                '        problem_statement=challenge.get("problem_statement", ""),',
-                '        research_objective=challenge.get("research_objective", ""),',
-                '        current_baseline=challenge.get("current_baseline", "not stated"),',
-                '        known_attempts="\\n".join(f"- {e}" for e in challenge.get("known_attempts", [])) or "- none stated",',  # noqa: E501 - embedded scaffold content; wrapping changes the file a miner receives
-                '        constraints="\\n".join(f"- {e}" for e in challenge.get("constraints", [])),',  # noqa: E501 - embedded scaffold content; wrapping changes the file a miner receives
-                '        forbidden_shortcuts="\\n".join(f"- {e}" for e in challenge.get("forbidden_shortcuts", [])) or "- none stated",',  # noqa: E501 - embedded scaffold content; wrapping changes the file a miner receives
-                "        schema=json.dumps(_SCHEMA_EXAMPLE, indent=2),",
-                "    )",
-            )
-        )
-        + "\n\n\n"
-        + "\n".join(
-            (
-                "def run():",
-                '    challenge_path = os.environ.get("AIL_CHALLENGE_PATH", "/input/challenge.json")',  # noqa: E501 - embedded scaffold content; wrapping changes the file a miner receives
-                '    output_dir = os.environ.get("AIL_OUTPUT_DIR", "/output")',
-                '    endpoint = os.environ["AIL_RCG_ENDPOINT"]',
-                '    token = os.environ["AIL_SESSION_TOKEN"]',
-                '    model = os.environ.get("AIL_MODEL_SLUG", "anthropic/claude-sonnet-5")',
-                "",
-                "    with open(challenge_path) as handle:",
-                '        challenge = json.load(handle)["challenge"]',
-                "",
-                "    request = json.dumps({",
-                '        "challenge_id": challenge["challenge_id"],',
-                '        "purpose": "research",',
-                '        "model_slug": model,',
-                '        "messages": [',
-                '            {"role": "system", "content": _SYSTEM},',
-                '            {"role": "user", "content": build_prompt(challenge)},',
-                "        ],",
-                '        "max_tokens": 16384,',
-                '        "temperature": 0.7,',
-                '        "response_format": {"type": "json_object"},',
-                "    }).encode()",
-                "",
-                "    try:",
-                "        response = urllib.request.urlopen(",
-                "            urllib.request.Request(",
-                '                f"{endpoint.rstrip(chr(47))}/v1/llm",',
-                "                data=request,",
-                "                headers={",
-                '                    "Authorization": f"Bearer {token}",',
-                '                    "Content-Type": "application/json",',
-                "                },",
-                "            ),",
-                "            timeout=900,",
-                "        )",
-                "        body = json.load(response)",
-                "    except urllib.error.HTTPError as error:",
-                '        print(f"RCG refused: {error.code}", file=sys.stderr)',
-                "        return 1",
-                "",
-                '    portfolio = json.loads(body["content"])',
-                '    portfolio["challenge_id"] = challenge["challenge_id"]',
-                "    os.makedirs(output_dir, exist_ok=True)",
-                '    with open(os.path.join(output_dir, "portfolio.json"), "w") as handle:',
-                "        json.dump(portfolio, handle, indent=2, sort_keys=True)",
-                "    return 0",
-            )
-        )
-        + "\n"
-    ),
+    # `src/lab.py` is not written here. It is derived from this module's own source by
+    # `_vendored_lab()` — see `scaffold()`. The first version hand-assembled it from repr'd
+    # constants and joined function lines, and shipped a file with a syntax error: the module
+    # docstring landed inside `build_prompt`. Nothing ran it, so nothing caught it, and the
+    # scaffold's whole purpose is to run on the first invocation.
     "README.md": """\
 # My invention laboratory
 

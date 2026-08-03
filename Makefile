@@ -12,7 +12,13 @@ venv: ## Create the virtualenv and install dev dependencies
 	uv pip install --python $(PY) -e ".[dev,gateway,validator]"
 
 test: ## Run the full suite under a randomised hash seed
-	PYTHONHASHSEED=random $(PY) -m pytest -q
+	PYTHONHASHSEED=random $(PY) -m pytest -q -m "not live"
+
+live: ## The vertical slice against real infrastructure. Spends money; needs Docker and both keys.
+	# Excluded from `make test` because it costs a few dollars and takes about ten minutes. It is
+	# also the only thing in the suite that has ever caught a defect in the container, the image,
+	# the scaffold or the price table — so it is worth running before anything is called finished.
+	$(PY) -m pytest -q -m live tests/integration/test_live_round.py
 
 test-determinism: ## Run the determinism suite five times under different hash seeds
 	@for seed in 0 1 7 42 20260803; do \

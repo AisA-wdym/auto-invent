@@ -66,7 +66,10 @@ class Generator(ProtocolModel):
         ...,
         description='Always OpenRouter. Kept as a field rather than omitted so a future second surface is a schema change rather than a silent assumption.',
     )
-    model_snapshot: constr(max_length=200)
+    model_snapshot: constr(max_length=200) = Field(
+        ...,
+        description="The immutable route to send for this generator family. Validator-side and therefore the owner's choice; miners are not pinned by the season (5.3).",
+    )
     slots: conint(ge=1)
     critic_family: constr(max_length=50) = Field(
         ...,
@@ -153,7 +156,10 @@ class Judge(ProtocolModel):
         description="Who trained the model behind the route, not the aggregator. Every judge is reached through OpenRouter, so reading 'provider' as the family would make the 40% cap vacuous: three routes to three Anthropic snapshots is one family and violates the cap however many distinct slugs it uses. The cap is evaluated on this field, which is why it is required rather than derived from the slug.",
     )
     provider: Provider1
-    model_snapshot: constr(max_length=200)
+    model_snapshot: constr(max_length=200) = Field(
+        ...,
+        description="The immutable route to send for this judge. Where a provider publishes dated variants, the dated slug; where it does not, the slug itself. Validator-side models are the owner's choice and are current rather than frozen across seasons — see 5.3. The same panel judges every laboratory in a cohort on a given day, so a route that moves moves for everyone at once.",
+    )
     model_slug: constr(min_length=1, max_length=200)
 
 
@@ -193,13 +199,31 @@ class MinerPricing(ProtocolModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    rcc_per_1k_in: conint(ge=0)
-    rcc_per_1k_out: conint(ge=0)
+    rcc_per_1k_in: conint(ge=0) = Field(
+        ...,
+        description='RCC per thousand input tokens. 1,000 means one RCC is one input token, so the unit reads as input-token-equivalents. Flat across models by design (see gateway/metering.py): RCC measures reasoning volume, so an equal ceiling equalises how much thinking each laboratory may do rather than how much money it may spend.',
+    )
+    rcc_per_1k_out: conint(ge=0) = Field(
+        ...,
+        description='RCC per thousand output tokens. 5,000 is a 5x multiple of input, which is the real ratio for both Claude routes and the median across the eight routes measured (4.0x to 8.0x).',
+    )
     rcc_per_search: conint(ge=0)
     allowed_model_slugs: list[constr(max_length=200)] | None = Field(
         None,
         description='Empty means any route OpenRouter offers. A non-empty list restricts it, and a slug absent from a non-empty list cannot be reached at all.',
         max_length=500,
+    )
+    maximum_rcc: conint(ge=1) = Field(
+        ...,
+        description="The RCC ceiling for one challenge, and therefore the basis of every comparison between laboratories (8, 13.6). Calibrated from measurement: one full five-idea portfolio synthesis against a frontier model costs about 200,000 RCC, and a laboratory that diverges, searches, critiques and then deepens costs roughly 800,000. A million leaves headroom for spending the budget well while keeping the reference template's single call at about a fifth of it.",
+    )
+    maximum_search_calls: conint(ge=0) = Field(
+        ...,
+        description='Search-call ceiling for one challenge. Counts against maximum_rcc as well (5.3).',
+    )
+    maximum_wall_time_seconds: conint(ge=1) = Field(
+        ...,
+        description='Wall-clock ceiling for one challenge (13.7), measured by the runner. A single frontier-model synthesis was measured at 214 seconds, so a laboratory making thirty calls needs either this much room or the parallelism its model manifest declares.',
     )
 
 

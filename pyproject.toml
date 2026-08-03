@@ -70,6 +70,7 @@ markers = [
     "adversarial: attack lab; asserts both that the attack fails and that evidence was recorded",
     "measurement: architecture.md section 27 mainnet gates",
     "chain: requires a local Bittensor network",
+    "live: spends real money — needs Docker, a running gateway and both OpenRouter accounts",
 ]
 
 [tool.ruff]

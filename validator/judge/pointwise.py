@@ -56,6 +56,13 @@ __all__ = [
 
 _log = logging.getLogger(__name__)
 
+#: Output ceiling for one judge call. Generous on purpose: a reasoning model spends this budget
+#: *thinking* before it answers, and gemini-2.5-pro was measured truncating a verdict at 215
+#: characters against a 1,536-token ceiling. A truncated verdict is unparseable, so it is recorded
+#: as an abstention — correct behaviour, wrong outcome: the criterion loses a judge, the panel drops
+#: below 16.1's three families, and the cause looks like a model that would not answer.
+_JUDGE_OUTPUT_TOKENS = 8_192
+
 #: 17.1's anchors, verbatim. In the prompt, so the judge classifies against stated meanings.
 ANCHORS: Mapping[int, str] = {
     0: "absent or invalid",
@@ -201,7 +208,7 @@ async def screen_portfolio(
                 portfolio=json.dumps(dict(portfolio), indent=2, sort_keys=True),
                 extra=extra,
             ),
-            "max_tokens": 1_536,
+            "max_tokens": _JUDGE_OUTPUT_TOKENS,
         }
         for judge in panel.judges
     ]

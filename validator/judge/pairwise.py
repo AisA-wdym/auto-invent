@@ -57,6 +57,11 @@ __all__ = [
 
 _log = logging.getLogger(__name__)
 
+#: Output ceiling for one comparison. Larger than the pointwise ceiling because 16.3's verdict
+#: carries strengths, failures and a decisive reason for *both* candidates — and because a reasoning
+#: model spends the same budget thinking first. See the note in `pointwise.py`.
+_JUDGE_OUTPUT_TOKENS = 12_288
+
 _SYSTEM = """\
 You compare two research portfolios on one criterion and choose the better one.
 
@@ -256,7 +261,7 @@ def _request(
             candidate_a=json_module.dumps(dict(body_a), indent=2, sort_keys=True),
             candidate_b=json_module.dumps(dict(body_b), indent=2, sort_keys=True),
         ),
-        "max_tokens": 2_048,
+        "max_tokens": _JUDGE_OUTPUT_TOKENS,
     }
 
 

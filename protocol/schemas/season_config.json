@@ -201,7 +201,8 @@
               },
               "model_snapshot": {
                 "type": "string",
-                "maxLength": 200
+                "maxLength": 200,
+                "description": "The immutable route to send for this generator family. Validator-side and therefore the owner's choice; miners are not pinned by the season (5.3)."
               },
               "slots": {
                 "type": "integer",
@@ -451,7 +452,8 @@
                     },
                     "model_snapshot": {
                       "type": "string",
-                      "maxLength": 200
+                      "maxLength": 200,
+                      "description": "The immutable route to send for this judge. Where a provider publishes dated variants, the dated slug; where it does not, the slug itself. Validator-side models are the owner's choice and are current rather than frozen across seasons \u2014 see 5.3. The same panel judges every laboratory in a cohort on a given day, so a route that moves moves for everyone at once."
                     },
                     "model_slug": {
                       "type": "string",
@@ -627,6 +629,9 @@
           "type": "object",
           "additionalProperties": false,
           "required": [
+            "maximum_rcc",
+            "maximum_search_calls",
+            "maximum_wall_time_seconds",
             "rcc_per_1k_in",
             "rcc_per_1k_out",
             "rcc_per_search"
@@ -634,11 +639,13 @@
           "properties": {
             "rcc_per_1k_in": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 0,
+              "description": "RCC per thousand input tokens. 1,000 means one RCC is one input token, so the unit reads as input-token-equivalents. Flat across models by design (see gateway/metering.py): RCC measures reasoning volume, so an equal ceiling equalises how much thinking each laboratory may do rather than how much money it may spend."
             },
             "rcc_per_1k_out": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 0,
+              "description": "RCC per thousand output tokens. 5,000 is a 5x multiple of input, which is the real ratio for both Claude routes and the median across the eight routes measured (4.0x to 8.0x)."
             },
             "rcc_per_search": {
               "type": "integer",
@@ -652,6 +659,21 @@
                 "maxLength": 200
               },
               "maxItems": 500
+            },
+            "maximum_rcc": {
+              "description": "The RCC ceiling for one challenge, and therefore the basis of every comparison between laboratories (8, 13.6). Calibrated from measurement: one full five-idea portfolio synthesis against a frontier model costs about 200,000 RCC, and a laboratory that diverges, searches, critiques and then deepens costs roughly 800,000. A million leaves headroom for spending the budget well while keeping the reference template's single call at about a fifth of it.",
+              "type": "integer",
+              "minimum": 1
+            },
+            "maximum_search_calls": {
+              "description": "Search-call ceiling for one challenge. Counts against maximum_rcc as well (5.3).",
+              "type": "integer",
+              "minimum": 0
+            },
+            "maximum_wall_time_seconds": {
+              "description": "Wall-clock ceiling for one challenge (13.7), measured by the runner. A single frontier-model synthesis was measured at 214 seconds, so a laboratory making thirty calls needs either this much room or the parallelism its model manifest declares.",
+              "type": "integer",
+              "minimum": 1
             }
           }
         },

@@ -357,10 +357,13 @@
   "providers": {
     "surface": "openrouter",
     "miner_pricing": {
-      "rcc_per_1k_in": 300,
-      "rcc_per_1k_out": 1500,
-      "rcc_per_search": 50,
-      "allowed_model_slugs": []
+      "rcc_per_1k_in": 1000,
+      "rcc_per_1k_out": 5000,
+      "rcc_per_search": 5000,
+      "allowed_model_slugs": [],
+      "maximum_rcc": 1000000,
+      "maximum_search_calls": 100,
+      "maximum_wall_time_seconds": 1800
     },
     "validator_purposes": [
       "challenge_generation",

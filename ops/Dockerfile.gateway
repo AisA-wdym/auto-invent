@@ -11,6 +11,11 @@ WORKDIR /app
 COPY pyproject.toml /app/
 COPY protocol/ /app/protocol/
 COPY gateway/ /app/gateway/
+# The season config, for the RCC price table. Omitting it shipped an image that could not start at
+# all: `--check` and the test suite both run from a source tree where `config/` happens to be on the
+# relative path, and CI *built* the image without ever running it. An image nobody starts is an
+# image nobody has tested.
+COPY config/ /app/config/
 
 RUN pip install --no-cache-dir \
       "fastapi==0.115.5" "uvicorn==0.32.1" "openai==1.109.1" \
