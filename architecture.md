@@ -24,7 +24,14 @@ Rolling miner score
 Bittensor weights
 ```
 
-The existing foundational principles remain unchanged: miners submit the laboratory itself, miners fund its inference and research costs, validators control execution, model versions are locked, and validation remains automated. 
+The existing foundational principles remain unchanged: miners submit the laboratory itself,
+miners fund its inference and research costs, validators control execution, model versions
+are locked, and validation remains automated.
+
+Two operational decisions are fixed in this revision. Miners reach every model and web
+search through **OpenRouter**, using **their own credential**, which the gateway holds and
+the sandbox never sees. Validators generate challenges and run judge panels on **their own
+Anthropic and OpenAI credentials**, and the two credential paths never mix. 
 
 ---
 
@@ -147,17 +154,69 @@ The Research Compute Gateway, or **RCG**, brokers all external calls.
 
 It provides:
 
-* miner-funded model access;
-* scoped, temporary credentials;
+* miner-funded model access, using the miner's own **OpenRouter** credential;
+* web search through the same provider;
+* scoped, temporary session tokens issued to the runner, never to the laboratory;
 * model-version enforcement;
 * query and response hashing;
 * token and cost metering;
-* search-provider access;
 * budget enforcement;
 * signed usage receipts;
 * endpoint allowlisting.
 
 This follows a production-proven pattern: ORO executes miner-submitted agents in isolated sandboxes and routes search and inference through controlled services rather than permitting direct unrestricted internet access. ([ORO Subnet][2])
+
+### 3.4.1 One provider for miners: OpenRouter
+
+Miners reach every foundation model through **OpenRouter**, and OpenRouter also serves web
+search. One provider surface rather than several, for three reasons:
+
+1. **Model choice stays open.** OpenRouter fronts Anthropic, OpenAI, Google, Meta,
+   Mistral, DeepSeek, Qwen and open-weight hosts behind one API, so a miner still selects
+   freely — including a private fine-tune it hosts and routes through.
+2. **One metering surface.** Usage and cost arrive in a single accounting format, which is
+   what makes an equal RCC ceiling comparable between two laboratories that chose entirely
+   different models.
+3. **One allowlist to enforce.** Model-version pinning and endpoint allowlisting have one
+   place to be right rather than one per provider adapter.
+
+### 3.4.2 Who pays, and whose key is used
+
+The miner funds its own laboratory, and it does so with **its own OpenRouter credential**,
+supplied inside the sealed submission. The validator uses that credential to run that
+miner's laboratory, and only that laboratory.
+
+Two properties are non-negotiable, and both are consequences of where the credential sits
+rather than of anyone's good behaviour.
+
+**The laboratory never holds its own key.** The credential is decrypted by the RCG at
+reveal and is used *by the RCG* on the laboratory's behalf. The container receives a
+short-lived session token bound to one run, and nothing else. A laboratory that held its
+own key could call outside the meter, exfiltrate the key in its own output, or spend beyond
+the ceiling — so the key is never written into the sandbox's filesystem, environment, or any
+response the laboratory can read.
+
+**The credential is never published.** Section 6.3 publishes source, prompts and model
+manifests after execution closes. The credential is not part of that: it travels in a
+separate sealed field that is excluded from publication by construction, not by a filter
+that could be forgotten.
+
+Miners **must** provision a dedicated, spend-capped key per round rather than a general
+account key. The RCG enforces the round ceiling regardless, but a capped key means a
+validator defect or compromise cannot exceed what the miner chose to risk. The protocol
+cannot verify a cap from the outside, so this is a published expectation with a
+corresponding measurement: receipt totals are reconciled against provider-reported usage
+(section 27), and a discrepancy is an incident rather than a rounding difference.
+
+### 3.4.3 Validator-funded calls use the validator's own credentials
+
+Challenge generation, judging and prior-art retrieval are **validator** costs (section
+5.4) and use the **validator's own** Anthropic and OpenAI credentials. They never touch a
+miner's key.
+
+The separation is strict and it is what keeps the accounting honest: if a validator could
+bill its own judging to a miner's credential, the equal-budget guarantee would be a
+fiction, and a validator could exhaust a competitor-sponsored miner's balance at will.
 
 ---
 
@@ -283,10 +342,9 @@ Every externally invoked model must be declared before submission closes.
   "models": [
     {
       "alias": "broad_ideator",
-      "provider": "chutes",
-      "endpoint_id": "chute-...",
-      "hf_repo": "miner/research-model",
-      "revision": "40-character-commit-sha",
+      "provider": "openrouter",
+      "model_slug": "anthropic/claude-sonnet-4.5",
+      "model_snapshot": "fixed-season-snapshot",
       "parameters": {
         "temperature": 0.9,
         "max_tokens": 10000
@@ -295,12 +353,21 @@ Every externally invoked model must be declared before submission closes.
     },
     {
       "alias": "final_critic",
-      "provider": "anthropic",
+      "provider": "openrouter",
+      "model_slug": "openai/gpt-5",
       "model_snapshot": "fixed-season-snapshot",
       "parameters": {
         "temperature": 0.2
       },
       "role": "critique"
+    },
+    {
+      "alias": "house_model",
+      "provider": "openrouter",
+      "model_slug": "miner-org/research-model",
+      "hf_repo": "miner/research-model",
+      "revision": "40-character-commit-sha",
+      "role": "idea_generation"
     }
   ],
   "routing_config_hash": "sha256:...",
@@ -308,20 +375,25 @@ Every externally invoked model must be declared before submission closes.
 }
 ```
 
-Model choice is open.
+Model choice is open. Every model is reached through **OpenRouter**, which is the single
+provider surface, but the *selection* behind it is unrestricted:
 
-A miner may use:
-
-* OpenAI;
-* Anthropic;
-* Gemini;
-* Chutes-hosted models;
-* private fine-tuned models;
+* Anthropic, OpenAI, Google, Meta, Mistral, DeepSeek, Qwen and other hosted families;
 * open-weight models;
+* a private fine-tune the miner hosts and routes through OpenRouter;
 * several models in one laboratory;
-* one specialized custom model.
+* one specialised custom model.
 
-For miner-owned models, Chutes can deploy a Hugging Face model behind an OpenAI-compatible vLLM API while locking deployment to a specific Hugging Face revision. ([Chutes][3])
+`model_slug` is the OpenRouter route. `model_snapshot` pins the season-fixed version of it,
+because a provider that silently moves a slug changes what every laboratory is running
+mid-season — so the snapshot rather than the slug is the identity the gateway enforces.
+
+A miner-hosted model additionally declares `hf_repo` and a full 40-character `revision`.
+An abbreviated revision is refused: abbreviations become ambiguous as a repository grows,
+and pinning exists precisely so the artifact cannot move.
+
+Web search is reached through the same credential and the same meter, so a laboratory's
+search spend and inference spend are bounded by one ceiling rather than two.
 
 ## 5.4 Research-compute funding
 
@@ -342,7 +414,36 @@ The validator funds:
 * prior-art verification;
 * score calculation.
 
-Raw provider credentials are never included in the public bundle.
+## 5.4.1 The sealed credential
+
+The miner's OpenRouter credential is submitted as a **separate sealed field**, alongside
+the sealed bundle and under the same timelock:
+
+```json
+{
+  "credential_envelope": {
+    "provider": "openrouter",
+    "key_capsule": "base64 timelock-encrypted key",
+    "nonce": "base64",
+    "declared_spend_cap_usd": 25,
+    "capsule_digest": "sha256:..."
+  }
+}
+```
+
+Separate rather than a field inside the manifest, and the separation is the control:
+section 6.3 publishes the bundle after execution closes, and a credential inside the
+published object would be published with it. A distinct envelope can be excluded by
+construction — the publication path never reads it — rather than by a filter someone has to
+remember to keep correct.
+
+`declared_spend_cap_usd` is what the miner states it provisioned. The protocol cannot
+verify a cap it does not control, so this is recorded and **reconciled**, not trusted: the
+RCG's receipt totals are compared against provider-reported usage, and a mismatch is an
+incident (section 27).
+
+Raw provider credentials are never included in the public bundle, and are never present in
+the sandbox at all — the RCG holds the key and the container holds only a session token.
 
 The RCG issues a short-lived token bound to:
 
@@ -351,13 +452,19 @@ The RCG issues a short-lived token bound to:
   "miner_hotkey": "5F...",
   "bundle_digest": "sha256:...",
   "validator_hotkey": "5G...",
-  "challenge_pack_hash": "sha256:...",
-  "allowed_endpoints": ["..."],
+  "challenge_id": "sha256:...",
+  "run_id": "...",
+  "allowed_models": ["openrouter/anthropic/claude-sonnet-4.5"],
   "maximum_rcc": 400,
   "maximum_requests": 500,
+  "maximum_search_calls": 100,
   "expires_at": "..."
 }
 ```
+
+The token names one run and one challenge. It cannot be replayed against a second
+challenge, cannot outlive the episode, and carries no provider credential — it authorises
+the RCG to spend on the laboratory's behalf, and authorises nothing else.
 
 ---
 
@@ -436,18 +543,47 @@ H. Optimization and efficiency
 
 Each daily pack is stratified across the active taxonomy.
 
-Example:
-
 ```text
-8 challenges per validator per day
+20 challenges per validator per day
 
-2 software/algorithm
-2 AI-agent architecture
-1 distributed system
-1 retrieval/memory
-1 mechanism design
-1 wildcard from the active domain pool
+10 generated by GPT
+10 generated by Claude
+
+stratified across the taxonomy:
+  3 software architecture
+  3 algorithms
+  4 AI-agent architecture
+  3 distributed coordination
+  3 memory and retrieval
+  2 digital mechanism design
+  2 data and model pipelines / optimization
 ```
+
+## 7.2.1 Two generators, deliberately
+
+The twenty problems are produced by **two independent generator families**: ten by GPT and
+ten by Claude. This is not redundancy, and it is not a hedge against an outage.
+
+A single generator has a *house style*. It reaches for the same problem shapes, the same
+constraint patterns, the same framings — and a laboratory tuned to that style scores well
+without being a better laboratory. With ten problems from each of two families, half the
+pack is always foreign to whatever a miner has overfitted to, and the difference between a
+miner's two halves is itself a measurement: a laboratory that scores far better on one
+family's problems has learned a generator, not a domain.
+
+That difference is recorded per miner and per day. A widening gap is the earliest available
+signal that the challenge supply has become predictable, and it appears long before
+scores stop discriminating.
+
+## 7.2.2 Cross-family critique
+
+A problem generated by GPT is reviewed by the **Claude** critic, and a problem generated by
+Claude is reviewed by the **GPT** critic.
+
+Same-family critique is close to self-review: a model shares its generator's blind spots and
+tends to rate its own family's output as clear and well-formed. Crossing the families means
+the reviewer does not share the writer's assumptions, which is the only version of this
+check that can find an ambiguity the writer could not see.
 
 ## 7.3 Challenge-generation seed
 
@@ -485,7 +621,9 @@ Final challenge-pack commitment
 
 ### Step 1: Candidate generation
 
-The generator produces three to five candidate problems for each required challenge slot.
+For each of the twenty slots, the assigned generator family produces three to five
+candidate problems. Slot assignment is fixed by the daily seed before generation begins, so
+a validator cannot decide after the fact which family produced which surviving problem.
 
 ### Step 2: Deterministic linter
 
@@ -502,7 +640,8 @@ The linter rejects problems that lack:
 
 ### Step 3: Critic review
 
-An independent critic model checks:
+The critic is drawn from the **opposite** family to the generator (section 7.2.2). It
+checks:
 
 * ambiguity;
 * internal contradiction;
@@ -546,13 +685,57 @@ Before miner execution begins, the validator publishes a signed commitment conta
   "date": "...",
   "challenge_pack_hash": "sha256:...",
   "generation_protocol_version": "CPG-1.0",
-  "generator_model_snapshots": ["..."],
-  "number_of_challenges": 8,
+  "generator_model_snapshots": {
+    "gpt": "fixed-season-snapshot",
+    "claude": "fixed-season-snapshot"
+  },
+  "number_of_challenges": 20,
+  "challenges_per_generator": { "gpt": 10, "claude": 10 },
   "signature": "..."
 }
 ```
 
+The commitment names the counts per generator but not which slot came from which family.
+Publishing the split per slot before execution would tell a laboratory which half of the
+pack to expect from whom, and the point of two families is that it cannot know.
+
 The actual problems remain private until the evaluation closes.
+
+## 7.5 Challenge storage
+
+Generated packs live in **Redis**, which is the validator's own store.
+
+Redis rather than a relational store because the access pattern is exactly what it is good
+at: write a pack once, read it many times during execution, expire it after the dedup
+window, and survive a restart mid-round without losing the pack a hash has already been
+committed for.
+
+Three things it holds:
+
+| Key | Contents | Lifetime |
+|---|---|---|
+| `pack:{date}` | The day's twenty challenges, plus the committed hash | The dedup window |
+| `dedup:{fingerprint}` | Mechanism fingerprints and embeddings of past challenges | `dedup_lookback_days` |
+| `run:{run_id}` | Which challenge a given run was issued, for reconciliation | Until publication |
+
+### Redis is not reachable from the sandbox
+
+The laboratory never connects to Redis, and Redis is never exposed on the sandbox network.
+The challenge reaches the laboratory the way section 9.1 specifies — as its structured
+input, delivered by the runner — and the only outbound path from the container remains the
+RCG.
+
+This is worth stating plainly because "serve the problems to miners from Redis" reads as
+though the miner should fetch them, and a laboratory that could reach Redis could read the
+whole pack: every problem, including the ones it has not been given yet, and the packs of
+other rounds. The store is the validator's; the delivery is the runner's.
+
+### The pack hash is committed before the pack is stored
+
+Writing to Redis is not the commitment. The signed `challenge_pack_hash` goes on chain
+first, and only then is the pack persisted. A store that could be edited between generation
+and commitment would make the commitment meaningless, and this ordering removes the window
+entirely rather than trusting that nobody uses it.
 
 ---
 
@@ -858,16 +1041,29 @@ This subnet uses model graders, but it narrows their responsibilities and contin
 
 ## 16.1 Judge families
 
-At least three different model families are required.
+At least three different model families are required, and they run on the **validator's own**
+Anthropic and OpenAI credentials — never on a miner's.
 
-Example composition:
+Composition:
 
-* Anthropic judge;
-* OpenAI judge;
-* Gemini judge;
-* optional Chutes-hosted open-weight judge.
+* **Claude judge** (Anthropic, direct);
+* **GPT judge** (OpenAI, direct);
+* a third family for the tie-breaking third opinion — Gemini, or an open-weight judge.
 
-No single provider family may control more than 40% of a semantic criterion.
+Claude and GPT are used **hybridly** and are the same two families that generate the
+challenges (section 7.2.1), which produces a property worth naming: a problem written by
+GPT is judged by a panel including Claude, and vice versa. No family both sets a problem
+and unilaterally decides the answer.
+
+No single provider family may control more than 40% of a semantic criterion. Two snapshots
+of one family are one family — the cap is on the family, because two versions of the same
+model share their failure modes.
+
+Direct rather than through OpenRouter, deliberately. Judging is the validator's own
+accounting, and routing it through the same aggregator miners use would put the judge and
+the judged on one billing surface, where a validator's judging spend and a miner's research
+spend become hard to separate. The miner-facing and validator-facing credential paths are
+kept apart at the provider level, not merely by bookkeeping.
 
 ## 16.2 Required judge roles
 
@@ -1167,21 +1363,38 @@ A recommended 24-hour cycle:
 T−2h   Miner bundle submission closes
 T−90m  Validator salts committed
 T−60m  Post-deadline block randomness fixed
-T−50m  Validators generate candidate challenges
-T−30m  Challenge quality gates complete
-T−20m  Challenge pack hash committed
-T0     Validator-only bundle reveal
-T0–6h  Admission + screening execution
+T−50m  Validators generate candidates — 10 GPT slots, 10 Claude slots, in parallel
+T−30m  Cross-family critique, linting, dedup and discrimination probes complete
+T−20m  Challenge pack hash committed on chain, then the pack is written to Redis
+T0     Validator-only bundle reveal; credential envelopes decrypted by the RCG
+T0–6h  Admission + screening execution across all 20 challenges
 T6–14h Full execution
 T14–18h Canonicalization + prior-art checks
 T18–21h Pairwise judge tournament
 T21–22h Replication and anomaly audit
 T22–23h Score aggregation
 T23h   Validator weights committed
-T24h   Public source, challenges and reports published
+T24h   Public source, challenges and reports published; credential envelopes are not
 ```
 
-Exact timings should be block-aligned rather than dependent only on wall-clock time.
+Exact timings should be block-aligned rather than dependent only on wall-clock time. A
+validator whose clock runs fast would otherwise commit its pack against different randomness
+than its peers, and the commitment would be to a pack nobody else could have produced.
+
+## 21.1 What twenty challenges cost
+
+Twenty problems rather than eight is a 2.5x increase in the work per miner per day, and the
+funnel (section 17) is what keeps that affordable rather than the challenge count.
+
+Two consequences follow and should be planned for:
+
+* **Screening carries more of the load.** With twenty problems, the cheap anchored pointwise
+  pass decides most of the field, and only the full-evaluation cohort sees all twenty under
+  pairwise judging. Screening quality is therefore load-bearing in a way it was not at eight.
+* **Miner cost scales with the pack.** A miner funds its own inference, so twenty problems
+  is 2.5x the miner's daily spend. The per-challenge `maximum_rcc` should be set with the
+  daily total in mind, since the published ceiling a miner plans against is
+  `challenges × maximum_rcc`, not `maximum_rcc`.
 
 ---
 
@@ -1230,6 +1443,14 @@ The detailed unpublished judge prompt may remain sealed until the end of a judge
 | One lucky result                      | Multi-challenge evaluation and replication                                        |
 | New miners never evaluated            | Mandatory exploration slots                                                       |
 | Owner self-mining advantage           | Owner does not generate daily tasks; owner-linked miner UIDs should be ineligible |
+| **Validator abuses a miner's credential** | Key held by the RCG and never by the sandbox; every call receipted and hash-chained; receipt totals reconciled against provider-reported usage; miners provision a spend-capped per-round key |
+| **Credential leaked by publication**  | Credential travels in a separate sealed envelope the publication path never reads — excluded by construction, not by a filter |
+| **Laboratory exfiltrates its own key**| The laboratory never receives it. It holds a run-scoped session token carrying no credential |
+| **Session token replayed on another challenge** | Token bound to one `run_id` and one `challenge_id`, with a short expiry |
+| **Laboratory reads the whole challenge pack** | Redis is the validator's store and is unreachable from the sandbox; the challenge arrives as the runner-delivered input |
+| **Pack edited between generation and commitment** | Hash committed on chain *before* the pack is written to Redis |
+| **Miner overfits to one generator's style** | Half the pack from each of two families; per-miner per-family score gap tracked as a drift signal |
+| **A generator family rates its own output as sound** | Cross-family critique: GPT-written problems are reviewed by Claude and vice versa |
 
 ---
 
@@ -1263,23 +1484,25 @@ ail-subnet/
 │   ├── tokens.py
 │   ├── metering.py
 │   ├── receipts.py
+│   ├── credentials.py          # sealed envelope -> RCG-held key, never the sandbox
 │   └── adapters/
-│       ├── openai.py
-│       ├── anthropic.py
-│       ├── gemini.py
-│       ├── chutes.py
-│       ├── search.py
+│       ├── openrouter.py       # the one miner-facing provider surface
+│       ├── search.py           # OpenRouter web search
 │       └── simulation.py
 │
 ├── validator/
 │   ├── neuron.py
 │   ├── challenge_factory/
 │   │   ├── taxonomy.py
-│   │   ├── generator.py
+│   │   ├── generator.py        # 10 GPT slots + 10 Claude slots
 │   │   ├── linter.py
-│   │   ├── critic.py
+│   │   ├── critic.py           # cross-family: GPT reviews Claude, Claude reviews GPT
 │   │   ├── dedup.py
-│   │   └── discriminator.py
+│   │   ├── discriminator.py
+│   │   └── store.py            # Redis: packs, dedup fingerprints, run bindings
+│   ├── judges/
+│   │   ├── anthropic.py        # validator's own credential
+│   │   └── openai.py           # validator's own credential
 │   ├── scheduler/
 │   ├── sandbox/
 │   ├── canonicalizer/
@@ -1373,7 +1596,7 @@ This architecture is professionally implementable with existing components.
 * The official subnet template separates protocol, miner and validator responsibilities, although this subnet requires additional production services around that minimal structure. ([GitHub][9])
 * ORO already demonstrates executable Python-agent submissions, validator work claiming, Docker sandbox execution and score production. ([ORO Subnet][2])
 * Harnyx demonstrates the closer domain analogue: miners submit deep-research scripts, validators execute them under budgets, and LLM judges compare research answers. Its presence confirms technical feasibility, but this subnet differs by optimizing for invention portfolios rather than conventional researched answers. ([Bittensor.ai][10])
-* Chutes supports OpenAI-compatible serving and pinned Hugging Face model revisions, making miner-owned model deployment technically straightforward. ([Chutes][3])
+* OpenRouter fronts every major model family behind one OpenAI-compatible API and serves web search on the same credential, so a single adapter covers the whole miner-facing surface and one metering format covers every model a miner might choose.
 * Anthropic’s current evaluation guidance explicitly supports combining deterministic graders and model-based graders for autonomous agents rather than relying on one evaluation type. ([Anthropic][4])
 
 The primary unresolved risk is **measurement validity**, not basic software feasibility.
@@ -1476,12 +1699,16 @@ Mainnet begins only after evaluator validity is demonstrated.
 2. Miners develop complete autonomous invention-lab bundles.
 3. Miners lock and seal their bundle, model manifest and billing delegation.
 4. Each validator derives an unpredictable daily seed.
-5. Each validator uses LLMs to generate a structured challenge pack.
-6. Automated linters, critics, deduplication and reference labs reject bad problems.
-7. The validator commits the final challenge-pack hash.
-8. Validators decrypt submitted bundles privately.
+5. Each validator generates 20 structured problems daily -- 10 with GPT, 10 with Claude, on
+   its own credentials.
+6. Cross-family critics, linters, deduplication and reference-lab discrimination probes
+   reject bad problems.
+7. The validator commits the challenge-pack hash on chain, then stores the pack in Redis.
+8. Validators decrypt submitted bundles privately, and the gateway decrypts each miner's
+   sealed OpenRouter credential envelope.
 9. The same hidden challenge instances are run against all miners in that cohort.
-10. Miner laboratories pay for their own models, search and simulation through RCG.
+10. Miner laboratories pay for their own models, search and simulation through the RCG,
+    which spends the miner's own OpenRouter credential and never exposes it to the sandbox.
 11. Validators enforce budgets, record receipts and collect Top-5 portfolios.
 12. Invalid outputs fail deterministic hard gates.
 13. Valid outputs are anonymized, canonicalized and independently checked against prior art.
@@ -1504,8 +1731,8 @@ It is:
 * fully automated;
 * decentralized at the validator level;
 * compatible with Bittensor’s native scoring and weight model;
-* economically scalable through miner-funded inference;
-* open to custom or commercial foundation models;
+* economically scalable through miner-funded inference, on the miner's own credential;
+* open to custom or commercial foundation models through one provider surface;
 * resistant to direct answer memorization through daily generated challenges;
 * capable of evolving research-laboratory architectures through public inheritance.
 
@@ -1519,7 +1746,7 @@ The correct mainnet criterion is therefore not “the validator code runs.” It
 
 [1]: https://docs.learnbittensor.org/concepts/weight-copying-in-bittensor?utm_source=chatgpt.com "The Weight Copying Problem | Bittensor"
 [2]: https://docs.oroagents.com/docs/architecture?utm_source=chatgpt.com "Architecture — ORO Docs"
-[3]: https://chutes.ai/docs/templates/vllm?utm_source=chatgpt.com "VLLM Template - Docs - Chutes"
+[3]: https://openrouter.ai/docs "OpenRouter Docs — unified API across model providers, with web search"
 [4]: https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents?utm_source=chatgpt.com "Demystifying evals for AI agents \ Anthropic"
 [5]: https://evals.openai.com/gdpval/grading?utm_source=chatgpt.com "OpenAI Evals"
 [6]: https://docs.learnbittensor.org/python-api/html/autoapi/bittensor/core/extrinsics/asyncex/weights/?utm_source=chatgpt.com "bittensor.core.extrinsics.asyncex.weights — Bittensor SDK Docs documentation"

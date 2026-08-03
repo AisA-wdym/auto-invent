@@ -4,7 +4,6 @@
   "weights_version": 1,
   "mechid": 1,
   "sdk_pin": "10.5.0",
-
   "taxonomy": {
     "domains": [
       "software_architecture",
@@ -16,15 +15,15 @@
       "data_and_model_pipelines",
       "optimization_and_efficiency"
     ],
-    "challenges_per_day": 8,
+    "challenges_per_day": 20,
     "stratification": {
-      "software_architecture": 1,
-      "algorithms": 1,
-      "ai_agent_architecture": 2,
-      "distributed_coordination": 1,
-      "memory_and_retrieval": 1,
-      "digital_mechanism_design": 1,
-      "wildcard": 1
+      "software_architecture": 3,
+      "algorithms": 3,
+      "ai_agent_architecture": 4,
+      "distributed_coordination": 3,
+      "memory_and_retrieval": 3,
+      "digital_mechanism_design": 2,
+      "data_and_model_pipelines": 2
     },
     "excluded_domains": [
       "clinical_or_medical_treatment",
@@ -36,7 +35,6 @@
       "long_horizon_real_world_outcomes"
     ]
   },
-
   "resource_classes": [
     {
       "name": "standard",
@@ -46,16 +44,34 @@
       "workspace_bytes": 2147483648
     }
   ],
-
   "challenge_generation": {
     "protocol_version": "CPG-1.0",
     "candidates_per_slot": 4,
     "dedup_lookback_days": 90,
     "duplicate_threshold_ppm": 850000,
     "minimum_reference_spread_ppm": 120000,
-    "generator_model_snapshots": []
+    "generators": [
+      {
+        "family": "gpt",
+        "provider": "openai",
+        "model_snapshot": "<fixed season snapshot>",
+        "slots": 10,
+        "critic_family": "claude"
+      },
+      {
+        "family": "claude",
+        "provider": "anthropic",
+        "model_snapshot": "<fixed season snapshot>",
+        "slots": 10,
+        "critic_family": "gpt"
+      }
+    ],
+    "store": {
+      "backend": "redis",
+      "sandbox_reachable": false,
+      "pack_ttl_days": 90
+    }
   },
-
   "criterion_weights_ppm": {
     "originality": 250000,
     "value": 200000,
@@ -66,9 +82,13 @@
     "falsifiability": 70000,
     "cost_reliability": 30000
   },
-
-  "rank_weights_ppm": [400000, 250000, 150000, 120000, 80000],
-
+  "rank_weights_ppm": [
+    400000,
+    250000,
+    150000,
+    120000,
+    80000
+  ],
   "scoring": {
     "pairwise_weight_ppm": 750000,
     "pointwise_weight_ppm": 250000,
@@ -82,7 +102,6 @@
     "rolling_long_weight_ppm": 400000,
     "minimum_days_for_median": 7
   },
-
   "judging": {
     "minimum_families": 3,
     "family_cap_ppm": 400000,
@@ -92,7 +111,6 @@
     "schema_validity_floor_ppm": 990000,
     "circuit_breaker_consecutive_failures": 3
   },
-
   "weight_allocation": {
     "temperature_ppm": 100000,
     "maximum_weight_ppm": 175000,
@@ -100,7 +118,6 @@
     "burn_uid": 0,
     "reference_floor_lab": "reference_a"
   },
-
   "cycle": {
     "blocks_per_day": 7200,
     "submission_close_offset": -600,
@@ -111,16 +128,57 @@
     "execution_close_offset": 4200,
     "weights_offset": 6900
   },
-
   "reference_labs": [
-    { "name": "reference_a", "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000" },
-    { "name": "reference_b", "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001" },
-    { "name": "reference_c", "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002" },
-    { "name": "reference_d", "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000003" }
+    {
+      "name": "reference_a",
+      "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "name": "reference_b",
+      "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "name": "reference_c",
+      "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002"
+    },
+    {
+      "name": "reference_d",
+      "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000003"
+    }
   ],
-
-  "providers": [],
-
+  "providers": {
+    "miner_facing": {
+      "provider": "openrouter",
+      "rcc_per_1k_in": 300,
+      "rcc_per_1k_out": 1500,
+      "rcc_per_search": 50,
+      "allowed_model_slugs": []
+    },
+    "validator_facing": [
+      {
+        "provider": "anthropic",
+        "purpose": [
+          "challenge_generation",
+          "critique",
+          "judging"
+        ]
+      },
+      {
+        "provider": "openai",
+        "purpose": [
+          "challenge_generation",
+          "critique",
+          "judging"
+        ]
+      },
+      {
+        "provider": "google",
+        "purpose": [
+          "judging"
+        ]
+      }
+    ]
+  },
   "disclosure": {
     "publish_after_execution_close": [
       "challenge_pack",
@@ -141,7 +199,6 @@
     ],
     "judge_prompt_sealed_until_epoch_end": true
   },
-
   "signing": {
     "registry_pubkey": "<operations public key>",
     "owner_hotkey": "<owner hotkey address>",

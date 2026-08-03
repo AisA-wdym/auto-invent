@@ -2,14 +2,19 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://auto-invent.ai/schemas/model_manifest.json",
   "title": "ModelManifest",
-  "description": "Every externally invoked model, declared before submission closes (architecture.md section 5.3). Model choice is open — any provider, several models in one laboratory, or one specialised custom model — but the *declaration* is closed: after the deadline a laboratory cannot change which models it calls, at which revisions, with which parameters.\n\nThis is what makes 'undeclared model use' and 'model-revision mismatch' hard gates (section 13) rather than opinions. The gateway enforces the declaration at call time; an undeclared model cannot be reached at all.",
+  "description": "Every externally invoked model, declared before submission closes (architecture.md section 5.3). Every model is reached through OpenRouter, which is the single miner-facing provider surface, but the selection behind it is unrestricted: Anthropic, OpenAI, Google, Meta, Mistral, open-weight hosts, or a private fine-tune the miner routes through.\n\nOne surface for three reasons: model choice stays open, usage arrives in one accounting format (which is what makes an equal RCC ceiling comparable between two laboratories that chose different models), and model pinning has one place to be right rather than one per provider adapter.\n\nThe declaration is closed even though the choice is open: after the deadline a laboratory cannot change which models it calls, at which snapshots, with which parameters. That is what makes 'undeclared model use' and 'model-revision mismatch' hard gates rather than opinions -- the gateway enforces the declaration at call time, and an undeclared model cannot be reached at all.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["models", "routing_config_hash"],
+  "required": [
+    "models",
+    "routing_config_hash"
+  ],
   "properties": {
     "models": {
       "type": "array",
-      "items": { "$ref": "#/$defs/model" },
+      "items": {
+        "$ref": "#/$defs/model"
+      },
       "minItems": 1,
       "maxItems": 40
     },
@@ -17,14 +22,26 @@
       "description": "Content address of the routing configuration. Pinned so that which model handles which role cannot change after the deadline, even when the model set does not.",
       "$ref": "#/$defs/hash"
     },
-    "maximum_parallel_calls": { "type": "integer", "minimum": 1, "maximum": 128 }
+    "maximum_parallel_calls": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 128
+    }
   },
   "$defs": {
-    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
     "model": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["alias", "provider", "role"],
+      "required": [
+        "alias",
+        "provider",
+        "model_slug",
+        "role"
+      ],
       "properties": {
         "alias": {
           "description": "The laboratory's internal name for this model. What its own code calls; the gateway resolves it to the declaration.",
@@ -32,8 +49,13 @@
           "minLength": 1,
           "maxLength": 100
         },
-        "provider": { "type": "string", "minLength": 1, "maxLength": 100 },
-        "endpoint_id": { "type": "string", "maxLength": 200 },
+        "provider": {
+          "description": "The provider surface. OpenRouter for every miner-facing call; the enum is closed so a laboratory cannot name a route the gateway has no adapter for.",
+          "type": "string",
+          "enum": [
+            "openrouter"
+          ]
+        },
         "hf_repo": {
           "description": "For a miner-owned model. Chutes can deploy a Hugging Face model behind an OpenAI-compatible API pinned to a revision, which is what makes a private fine-tune verifiable.",
           "type": "string",
@@ -45,7 +67,7 @@
           "pattern": "^[0-9a-f]{40}$"
         },
         "model_snapshot": {
-          "description": "For a hosted model: the fixed season snapshot. A provider that silently moves a model alias changes what every laboratory is running mid-season, which is why the snapshot rather than the alias is the identity.",
+          "description": "The season-fixed version of the route. A provider that silently moves a slug changes what every laboratory is running mid-season, so the snapshot rather than the slug is the identity the gateway enforces.",
           "type": "string",
           "maxLength": 200
         },
@@ -66,6 +88,12 @@
             "simulation",
             "other"
           ]
+        },
+        "model_slug": {
+          "description": "The OpenRouter route, e.g. `anthropic/claude-sonnet-4.5`. Identifies which model; `model_snapshot` pins which version of it.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
         }
       }
     }

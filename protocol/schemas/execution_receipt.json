@@ -14,37 +14,113 @@
     "calls",
     "totals",
     "chain_head",
-    "signature"
+    "signature",
+    "credential_owner"
   ],
   "properties": {
-    "run_id": { "type": "string", "maxLength": 200 },
-    "miner_hotkey": { "type": "string", "maxLength": 100 },
-    "bundle_digest": { "$ref": "#/$defs/hash" },
-    "challenge_id": { "$ref": "#/$defs/hash" },
-    "validator_hotkey": { "type": "string", "maxLength": 100 },
-    "calls": { "type": "array", "items": { "$ref": "#/$defs/call" }, "maxItems": 10000 },
+    "run_id": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "miner_hotkey": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "bundle_digest": {
+      "$ref": "#/$defs/hash"
+    },
+    "challenge_id": {
+      "$ref": "#/$defs/hash"
+    },
+    "validator_hotkey": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "calls": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/call"
+      },
+      "maxItems": 10000
+    },
     "totals": {
       "description": "Gateway-measured, never miner-reported. Section 9.2: validators replace self-reported usage with measured usage.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["rcc", "model_calls", "search_calls"],
+      "required": [
+        "rcc",
+        "model_calls",
+        "search_calls"
+      ],
       "properties": {
-        "rcc": { "type": "integer", "minimum": 0 },
-        "model_calls": { "type": "integer", "minimum": 0 },
-        "search_calls": { "type": "integer", "minimum": 0 },
-        "tokens_in": { "type": "integer", "minimum": 0 },
-        "tokens_out": { "type": "integer", "minimum": 0 },
-        "wall_time_seconds": { "type": "integer", "minimum": 0 }
+        "rcc": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "model_calls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "search_calls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokens_in": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokens_out": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "wall_time_seconds": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "chain_head": {
       "description": "Hash over the final call, and therefore over every call before it.",
       "$ref": "#/$defs/hash"
     },
-    "signature": { "type": "string", "minLength": 1, "maxLength": 500 }
+    "signature": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "credential_owner": {
+      "description": "Whose credential funded these calls. Always the miner for a laboratory run. Recorded because the miner-facing and validator-facing credential paths must never mix: a validator billing its own judging to a miner's key would make the equal-budget guarantee a fiction and could drain a rival's balance at will. An unexpected value here is an incident, not a label.",
+      "type": "string",
+      "enum": [
+        "miner",
+        "validator"
+      ]
+    },
+    "provider_reported_usage": {
+      "description": "Usage as the provider itself reports it, for reconciliation against `totals`. Section 27 requires 100% receipt reconciliation; a discrepancy means the meter and the provider disagree about what was spent on a miner's credential, which is the one signal that catches a validator spending outside the receipted path.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rcc": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cost_micro_usd": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requests": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
   },
   "$defs": {
-    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
     "hashOrGenesis": {
       "description": "The previous link, or the genesis marker for the first call.",
       "type": "string",
@@ -53,24 +129,68 @@
     "call": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["seq", "tool", "provider", "request_hash", "response_hash", "rcc", "previous"],
+      "required": [
+        "seq",
+        "tool",
+        "provider",
+        "request_hash",
+        "response_hash",
+        "rcc",
+        "previous"
+      ],
       "properties": {
-        "seq": { "type": "integer", "minimum": 0 },
-        "tool": { "type": "string", "enum": ["llm", "search", "sim", "embedding", "code"] },
-        "provider": { "type": "string", "maxLength": 100 },
-        "model": { "type": "string", "maxLength": 200 },
-        "revision": { "type": "string", "maxLength": 100 },
-        "request_hash": { "$ref": "#/$defs/hash" },
-        "response_hash": { "$ref": "#/$defs/hash" },
-        "rcc": { "type": "integer", "minimum": 0 },
-        "tokens_in": { "type": "integer", "minimum": 0 },
-        "tokens_out": { "type": "integer", "minimum": 0 },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tool": {
+          "type": "string",
+          "enum": [
+            "llm",
+            "search",
+            "sim",
+            "embedding",
+            "code"
+          ]
+        },
+        "provider": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "model": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "revision": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "request_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "response_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "rcc": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokens_in": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokens_out": {
+          "type": "integer",
+          "minimum": 0
+        },
         "attempts": {
           "description": "Attempts that may have consumed provider budget, including failures. A retry storm must not be free.",
           "type": "integer",
           "minimum": 1
         },
-        "previous": { "$ref": "#/$defs/hashOrGenesis" }
+        "previous": {
+          "$ref": "#/$defs/hashOrGenesis"
+        }
       }
     }
   }
