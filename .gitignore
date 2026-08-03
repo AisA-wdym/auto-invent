@@ -1,0 +1,22 @@
+# Virtualenv and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Local state written at runtime
+*.sqlite3
+/var/
+/state/
+/artifacts/
+
+# Secrets never belong in the tree. The RCG resolves credentials from a mounted
+# store at runtime; anything matching these was a mistake.
+*.pem
+*.key
+!tests/**/*.key
+.env
+.env.*
+/run/secrets/
