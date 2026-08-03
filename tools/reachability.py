@@ -127,6 +127,14 @@ ENFORCEMENT: dict[str, str] = {
         "validator.challenge_factory.store:assert_not_sandbox_reachable",
     "7.3 a salt committed at or after the randomness block is refused":
         "protocol.commitments:verify_salt_timing",
+    "10 a laboratory image is run by digest, never by a mutable tag":
+        "validator.sandbox.container:docker_command",
+    "10 the sandbox network is internal, so there is no route off the meter":
+        "validator.sandbox.container:assert_egress_confined",
+    "9.2 measured usage replaces the laboratory's self-reported claim":
+        "validator.sandbox.runner:Runner.execute",
+    "13 a hard-gate failure invalidates the response and cannot be compensated for":
+        "validator.scoring.gates:check_all",
 }
 
 #: Decorator shapes meaning "a framework calls this, not our code". `@app.post("/v1/llm")`
