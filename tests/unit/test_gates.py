@@ -108,13 +108,13 @@ def test_every_gate_identifier_is_numbered_as_the_spec_numbers_it():
 def test_no_portfolio_fails_every_gate_rather_than_only_the_schema():
     """"Twelve passed, one failed" on a laboratory that produced nothing would be misleading —
     and it is exactly what a partially-implemented validator reports."""
-    result = check_all(portfolio=None, challenge=CHALLENGE)
+    result = check_all(portfolio=None, challenge=CHALLENGE, declared_models=DECLARED)
     assert not result.valid
     assert len(result.failures()) == 13
 
 
 def test_the_unevaluable_gates_say_so():
-    result = check_all(portfolio=None, challenge=CHALLENGE)
+    result = check_all(portfolio=None, challenge=CHALLENGE, declared_models=DECLARED)
     details = {r.gate: r.detail for r in result.failures()}
     assert "not evaluable" in details[Gate.BUDGET]
 
@@ -404,3 +404,81 @@ def test_a_failing_response_lists_every_gate_it_failed():
     )
     failed = set(result.failed_gates())
     assert {Gate.BUDGET, Gate.TIME, Gate.UNDECLARED_MODEL, Gate.COPYING} <= failed
+
+
+# --------------------------------------------------------------------------
+# A ceiling we cannot read must not pass the gate it bounds
+# --------------------------------------------------------------------------
+#
+# Found by auditing for silent fallbacks rather than by a failing test, which is why these live
+# here as a block. `int(limits.get("maximum_rcc", 0))` fed a check written as
+# `if maximum_rcc and measured > maximum`, so a challenge with no `resource_limits` passed gates
+# 13.6 and 13.7 unconditionally.
+#
+# The linter requires those fields on a *generated* challenge, so this never fired in practice —
+# which is exactly what made it worth fixing. `check_all` is the enforcement point, and an
+# enforcement point whose correctness rests on an upstream guarantee is enforcing that guarantee's
+# continued existence rather than the rule it names.
+
+
+def test_a_missing_rcc_ceiling_fails_the_budget_gate_rather_than_passing_it():
+    """An unverifiable budget is not a satisfied budget."""
+    result = report(
+        challenge={
+            **CHALLENGE,
+            "resource_limits": {"maximum_search_calls": 100, "maximum_wall_time_seconds": 1_800},
+        }
+    )
+    assert Gate.BUDGET in result.failed_gates()
+    assert "cannot be verified" in result.reason()
+
+
+def test_a_zero_rcc_ceiling_fails_the_budget_gate():
+    """Zero is not "unlimited". It is a malformed challenge."""
+    result = report(
+        challenge={**CHALLENGE, "resource_limits": {**CHALLENGE["resource_limits"],
+                                                    "maximum_rcc": 0}}
+    )
+    assert Gate.BUDGET in result.failed_gates()
+
+
+def test_a_missing_resource_limits_block_fails_both_the_budget_and_time_gates():
+    challenge = {key: value for key, value in CHALLENGE.items() if key != "resource_limits"}
+    result = report(challenge=challenge)
+    assert Gate.BUDGET in result.failed_gates()
+    assert Gate.TIME in result.failed_gates()
+
+
+def test_a_missing_wall_clock_ceiling_fails_the_time_gate():
+    result = report(
+        challenge={
+            **CHALLENGE,
+            "resource_limits": {"maximum_rcc": 400, "maximum_search_calls": 100},
+        }
+    )
+    assert Gate.TIME in result.failed_gates()
+
+
+def test_a_missing_search_ceiling_fails_the_budget_gate():
+    result = report(
+        challenge={**CHALLENGE, "resource_limits": {"maximum_rcc": 400,
+                                                    "maximum_wall_time_seconds": 1_800}}
+    )
+    assert Gate.BUDGET in result.failed_gates()
+
+
+def test_a_missing_required_portfolio_size_fails_the_fields_gate():
+    """Without it the size check silently did not run, so a one-idea portfolio passed a
+    five-idea challenge."""
+    challenge = {key: value for key, value in CHALLENGE.items() if key != "required_output"}
+    result = report(challenge=challenge, portfolio=portfolio(portfolio=[idea(1)]))
+    assert Gate.FIELDS in result.failed_gates()
+
+
+def test_declared_models_must_be_supplied_rather_than_defaulting():
+    """A caller that forgot the argument previously failed *every* miner on 13.3 — fail-closed, but
+    a footgun pointing at the whole field. It is now required, so forgetting it is a TypeError."""
+    import inspect
+
+    signature = inspect.signature(check_all)
+    assert signature.parameters["declared_models"].default is inspect.Parameter.empty

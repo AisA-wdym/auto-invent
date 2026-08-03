@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -82,6 +83,12 @@ class LabResult:
     failure: str = ""
     #: What the RCG measured. Replaces `resource_usage_claim` per 9.2.
     measured_usage: dict[str, int] = field(default_factory=dict)
+    #: Every call on the receipt chain, as `Call.link_body()` dicts. Carried here rather than left
+    #: for the caller to re-fetch, because gates 13.3, 13.4, 13.5 and 13.11 are all decided from it
+    #: — and a caller that had to fetch it separately could omit it. An earlier version of the
+    #: validator's composition passed `receipt_calls=()`, which failed gate 13.11 for *every*
+    #: laboratory (a portfolio with no inference behind it) while 13.3 and 13.5 passed vacuously.
+    receipt_calls: tuple[dict[str, Any], ...] = ()
     #: What the laboratory said it used. Kept as evidence, never used as usage.
     claimed_usage: dict[str, int] = field(default_factory=dict)
     #: The receipt chain head, binding this result to its evidence.
@@ -246,8 +253,7 @@ class Runner:
 
         # Closed unconditionally, so its ledger entry and receipt do not outlive it.
         closed = await _maybe_await(self.close(run_id))
-        measured = dict(closed.get("totals", {}))
-        chain_head = str(closed.get("chain_head", ""))
+        measured, receipt_calls, chain_head = _read_close(closed, run_id)
 
         if container_failure:
             raise RunnerError(container_failure)
@@ -273,12 +279,50 @@ class Runner:
             failure=failure,
             measured_usage=measured,
             claimed_usage=claimed,
+            receipt_calls=receipt_calls,
             chain_head=chain_head,
             wall_seconds=outcome.duration_seconds,
             timed_out=outcome.timed_out,
             exit_code=outcome.exit_code,
             stderr_tail=outcome.stderr_tail,
         )
+
+
+def _read_close(
+    closed: Any, run_id: str
+) -> tuple[dict[str, int], tuple[dict[str, Any], ...], str]:
+    """Read the gateway's close response, refusing a shape we cannot score against.
+
+    Every field here decides a hard gate, so a missing one is raised rather than defaulted.
+    Reading `totals` with a `{}` default would report zero spend and *pass* gate 13.6; reading
+    `calls` with a `()` default would fail gate 13.11 for every laboratory. Neither direction is
+    safe, so there is no default at all — a gateway that returns an unreadable close is an
+    operational failure of ours, not a scoring outcome for the miner.
+    """
+    if not isinstance(closed, Mapping):
+        raise RunnerError(
+            f"run {run_id}: the gateway returned {type(closed).__name__} from close, not an "
+            "object. The response decides four hard gates and cannot be guessed at."
+        )
+    totals = closed.get("totals")
+    if not isinstance(totals, Mapping):
+        raise RunnerError(
+            f"run {run_id}: the close response carries no `totals`. Defaulting to zero spend "
+            "would pass gate 13.6 for a laboratory whose usage we never measured."
+        )
+    receipt = closed.get("receipt")
+    calls = receipt.get("calls") if isinstance(receipt, Mapping) else None
+    if not isinstance(calls, Sequence) or isinstance(calls, str | bytes):
+        raise RunnerError(
+            f"run {run_id}: the close response carries no receipt call list. Defaulting to an "
+            "empty list would fail gate 13.11 for every laboratory — a portfolio with no inference "
+            "behind it — while passing 13.3 and 13.5 vacuously."
+        )
+    return (
+        {key: int(value) for key, value in totals.items() if isinstance(value, int)},
+        tuple(dict(call) for call in calls if isinstance(call, Mapping)),
+        str(closed.get("chain_head", "")),
+    )
 
 
 def _request_ceiling(challenge: dict[str, Any]) -> int:

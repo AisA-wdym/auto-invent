@@ -582,6 +582,15 @@ def test_the_fingerprint_ignores_resource_limits():
 # --------------------------------------------------------------------------
 
 
+#: 7.4 step 5's other two thresholds, from the season config rather than from code defaults.
+THRESHOLDS = {
+    "minimum_degradation_gap_ppm": SEASON["challenge_generation"][
+        "minimum_degradation_gap_ppm"
+    ],
+    "maximum_instability_ppm": SEASON["challenge_generation"]["maximum_judge_instability_ppm"],
+}
+
+
 def outcome(**over) -> ProbeOutcome:
     fields = dict(
         reference_scores={"a": 400_000, "b": 700_000, "c": 550_000, "d": 620_000},
@@ -595,7 +604,7 @@ def outcome(**over) -> ProbeOutcome:
 
 
 def test_a_discriminating_problem_passes():
-    verdict = assess(outcome(), minimum_spread_ppm=120_000)
+    verdict = assess(outcome(), minimum_spread_ppm=120_000, **THRESHOLDS)
     assert verdict.discriminates, verdict.failures
 
 
@@ -603,26 +612,28 @@ def test_a_problem_every_reference_answers_identically_is_rejected():
     """Condition 1: no spread means no information, and the slot measures nothing."""
     verdict = assess(
         outcome(reference_scores={"a": 600_000, "b": 605_000, "c": 602_000, "d": 601_000}),
-        minimum_spread_ppm=120_000,
+        minimum_spread_ppm=120_000, **THRESHOLDS
     )
     assert not verdict.discriminates
     assert "essentially the same answer" in verdict.reason()
 
 
 def test_a_problem_answered_by_retrieval_is_rejected():
-    verdict = assess(outcome(answered_by_retrieval=True), minimum_spread_ppm=120_000)
+    verdict = assess(outcome(answered_by_retrieval=True), minimum_spread_ppm=120_000, **THRESHOLDS)
     assert not verdict.discriminates
 
 
 def test_a_problem_the_judges_cannot_score_consistently_is_rejected():
     """Condition 3: the panel disagreeing with itself means its scores are noise."""
-    verdict = assess(outcome(judge_instability_ppm=400_000), minimum_spread_ppm=120_000)
+    verdict = assess(
+        outcome(judge_instability_ppm=400_000), minimum_spread_ppm=120_000, **THRESHOLDS
+    )
     assert not verdict.discriminates
     assert "disagrees with itself" in verdict.reason()
 
 
 def test_a_problem_where_no_reference_states_a_mechanism_is_rejected():
-    verdict = assess(outcome(with_mechanism=0), minimum_spread_ppm=120_000)
+    verdict = assess(outcome(with_mechanism=0), minimum_spread_ppm=120_000, **THRESHOLDS)
     assert not verdict.discriminates
 
 
@@ -631,7 +642,7 @@ def test_a_problem_where_degraded_answers_score_as_well_is_rejected():
     whole one was never measuring quality."""
     verdict = assess(
         outcome(degraded_scores={"a": 395_000, "b": 690_000, "c": 545_000, "d": 615_000}),
-        minimum_spread_ppm=120_000,
+        minimum_spread_ppm=120_000, **THRESHOLDS
     )
     assert not verdict.discriminates
     assert "cannot tell a damaged portfolio" in verdict.reason()
@@ -641,7 +652,7 @@ def test_one_reference_is_not_enough_to_measure_spread():
     """A missing measurement is not a passing one."""
     verdict = assess(
         outcome(reference_scores={"a": 500_000}, degraded_scores={"a": 100_000}),
-        minimum_spread_ppm=120_000,
+        minimum_spread_ppm=120_000, **THRESHOLDS
     )
     assert not verdict.discriminates
     assert "at least two" in verdict.reason()
@@ -650,7 +661,9 @@ def test_one_reference_is_not_enough_to_measure_spread():
 def test_a_missing_degraded_score_is_skipped_rather_than_read_as_a_collapse():
     """Scoring an absent probe as zero would manufacture a large gap out of an outage."""
     verdict = assess(
-        outcome(degraded_scores={"a": 200_000, "b": 400_000}), minimum_spread_ppm=120_000
+        outcome(degraded_scores={"a": 200_000, "b": 400_000}),
+        minimum_spread_ppm=120_000,
+        **THRESHOLDS,
     )
     assert verdict.degradation_gap_ppm == ((400_000 - 200_000) + (700_000 - 400_000)) // 2
 

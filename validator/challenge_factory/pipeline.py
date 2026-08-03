@@ -220,7 +220,10 @@ async def _accept_first(
         if probe is not None:
             outcome = await probe.probe(candidate.body)
             discrimination: DiscriminationVerdict = assess(
-                outcome, minimum_spread_ppm=config.minimum_reference_spread_ppm
+                outcome,
+                minimum_spread_ppm=config.minimum_reference_spread_ppm,
+                minimum_degradation_gap_ppm=config.minimum_degradation_gap_ppm,
+                maximum_instability_ppm=config.maximum_judge_instability_ppm,
             )
             if not discrimination.discriminates:
                 rejections.append(

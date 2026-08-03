@@ -107,14 +107,20 @@ def assess(
     outcome: ProbeOutcome,
     *,
     minimum_spread_ppm: int,
-    minimum_degradation_gap_ppm: int = 100_000,
-    maximum_instability_ppm: int = 150_000,
+    minimum_degradation_gap_ppm: int,
+    maximum_instability_ppm: int,
 ) -> DiscriminationVerdict:
     """Apply 7.4 step 5's five conditions to a probe's measurements.
 
     Pure: takes measurements, returns a decision. The probe does the expensive work and this makes
     the call, so the threshold logic is testable against constructed measurements — including the
     boundary cases, which are the ones that decide whether a marginal problem enters a pack.
+
+    All three thresholds are required rather than defaulted. They were function defaults once, which
+    put two numbers that decide *which challenges enter a hashed pack* outside the hashed config —
+    so
+    an operator could not tune them, and two validators reading the same season could disagree
+    because one passed the argument and one did not.
     """
     failures: list[str] = []
 

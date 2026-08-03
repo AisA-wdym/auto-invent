@@ -185,9 +185,9 @@ def check_all(
     challenge: Mapping[str, Any],
     schema_errors: Sequence[str] = (),
     receipt_calls: Sequence[Mapping[str, Any]] = (),
+    declared_models: Mapping[str, str],
     measured_rcc: int = 0,
     measured_search_calls: int = 0,
-    declared_models: Mapping[str, str] = {},
     wall_seconds: float = 0.0,
     timed_out: bool = False,
     citation_failures: Sequence[str] = (),
@@ -247,31 +247,21 @@ def check_all(
     # 13.5 — endpoints. Every call must have gone through the RCG.
     results.append(_check_endpoints(receipt_calls))
 
-    # 13.6 — budget.
-    limits = challenge.get("resource_limits", {})
+    # 13.6 — budget. `_ceiling` returns None for a ceiling that is absent or non-positive, and
+    # both checks below treat None as a *failure* rather than as "unlimited".
+    limits = challenge.get("resource_limits")
+    limits = limits if isinstance(limits, Mapping) else {}
     results.append(
         _check_budget(
             measured_rcc=measured_rcc,
             measured_search_calls=measured_search_calls,
-            maximum_rcc=int(limits.get("maximum_rcc", 0)),
-            maximum_search_calls=int(limits.get("maximum_search_calls", 0)),
+            maximum_rcc=_ceiling(limits, "maximum_rcc"),
+            maximum_search_calls=_ceiling(limits, "maximum_search_calls"),
         )
     )
 
     # 13.7 — time.
-    maximum_wall = float(limits.get("maximum_wall_time_seconds", 0))
-    over_time = timed_out or (maximum_wall > 0 and wall_seconds > maximum_wall)
-    results.append(
-        GateResult(
-            Gate.TIME,
-            not over_time,
-            (
-                f"ran {wall_seconds:.1f}s against a {maximum_wall:.0f}s limit"
-                if over_time
-                else ""
-            ),
-        )
-    )
+    results.append(_check_time(limits, wall_seconds=wall_seconds, timed_out=timed_out))
 
     # 13.8 — citations. Reported by the checker; this only records the verdict.
     results.append(
@@ -327,8 +317,18 @@ def _check_fields(portfolio: Mapping[str, Any], challenge: Mapping[str, Any]) ->
             Gate.FIELDS, False, f"`portfolio` is {type(ideas).__name__}, not a list of ideas"
         )
 
-    required_size = int(challenge.get("required_output", {}).get("portfolio_size", 0))
-    if required_size and len(ideas) != required_size:
+    required = challenge.get("required_output")
+    required = required if isinstance(required, Mapping) else {}
+    required_size = _ceiling(required, "portfolio_size")
+    if required_size is None:
+        # Same silent-pass shape as the budget ceilings had: read with a zero default and then
+        # tested for truthiness, a challenge with no `required_output` skipped the size check
+        # entirely — so a one-idea portfolio satisfied a five-idea challenge.
+        missing.append(
+            "the challenge declares no usable required_output.portfolio_size, so the portfolio "
+            "size cannot be checked"
+        )
+    elif len(ideas) != required_size:
         # Both directions. Too few is an incomplete answer; too many would give a laboratory more
         # chances at the rank-1 weight than everyone else, and 18.1 weights by position.
         missing.append(
@@ -418,8 +418,31 @@ def _check_endpoints(receipt_calls: Sequence[Mapping[str, Any]]) -> GateResult:
     )
 
 
+def _ceiling(limits: Mapping[str, Any], name: str) -> int | None:
+    """One declared ceiling, or None if it is absent, non-integer or non-positive.
+
+    None means *unverifiable*, and every caller treats that as a gate failure. It emphatically does
+    not mean unlimited — which is what the first version of this module effectively did, by reading
+    the value with `int(limits.get(name, 0))` and then testing `if maximum and measured > maximum`.
+    A challenge with no `resource_limits` block passed gates 13.6 and 13.7 unconditionally.
+
+    Nothing had ever produced such a challenge: the linter requires the block, so every *generated*
+    challenge carries it. That is exactly what made the defect worth fixing rather than shrugging at
+    — an enforcement point whose correctness depends on an upstream guarantee is enforcing that
+    guarantee's continued existence, not the rule it names.
+    """
+    value = limits.get(name)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
 def _check_budget(
-    *, measured_rcc: int, measured_search_calls: int, maximum_rcc: int, maximum_search_calls: int
+    *,
+    measured_rcc: int,
+    measured_search_calls: int,
+    maximum_rcc: int | None,
+    maximum_search_calls: int | None,
 ) -> GateResult:
     """13.6, on measured spend.
 
@@ -429,13 +452,54 @@ def _check_budget(
     ledger's job was to bound the overshoot to one call; this one's is to notice it happened.
     """
     problems: list[str] = []
-    if maximum_rcc and measured_rcc > maximum_rcc:
+    if maximum_rcc is None:
+        problems.append(
+            "the challenge declares no usable maximum_rcc, so the budget cannot be verified. An "
+            "unverifiable budget is not a satisfied budget: 8 gives every laboratory the same "
+            "ceiling, and without one there is nothing to compare them under."
+        )
+    elif measured_rcc > maximum_rcc:
         problems.append(f"spent {measured_rcc} RCC against a ceiling of {maximum_rcc}")
-    if maximum_search_calls and measured_search_calls > maximum_search_calls:
+
+    if maximum_search_calls is None:
+        problems.append(
+            "the challenge declares no usable maximum_search_calls, so search spend cannot be "
+            "verified"
+        )
+    elif measured_search_calls > maximum_search_calls:
         problems.append(
             f"made {measured_search_calls} search calls against a ceiling of {maximum_search_calls}"
         )
     return GateResult(Gate.BUDGET, not problems, "; ".join(problems))
+
+
+def _check_time(
+    limits: Mapping[str, Any], *, wall_seconds: float, timed_out: bool
+) -> GateResult:
+    """13.7, on the runner's measured wall clock.
+
+    `timed_out` is authoritative on its own: the runner killed the container, so the limit was
+    exceeded whatever the declared ceiling says. A missing ceiling is still a failure, for the same
+    reason as in `_check_budget` — it cannot be checked, and 8 requires it to exist.
+    """
+    if timed_out:
+        return GateResult(
+            Gate.TIME, False, f"the runner terminated it after {wall_seconds:.1f}s"
+        )
+
+    maximum = _ceiling(limits, "maximum_wall_time_seconds")
+    if maximum is None:
+        return GateResult(
+            Gate.TIME,
+            False,
+            "the challenge declares no usable maximum_wall_time_seconds, so the time limit cannot "
+            "be verified",
+        )
+    if wall_seconds > maximum:
+        return GateResult(
+            Gate.TIME, False, f"ran {wall_seconds:.1f}s against a {maximum}s limit"
+        )
+    return GateResult(Gate.TIME, True)
 
 
 def _check_injection(portfolio: Mapping[str, Any]) -> GateResult:

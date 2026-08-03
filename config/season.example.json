@@ -72,7 +72,9 @@
       "backend": "redis",
       "sandbox_reachable": false,
       "pack_ttl_days": 90
-    }
+    },
+    "minimum_degradation_gap_ppm": 100000,
+    "maximum_judge_instability_ppm": 150000
   },
   "criterion_weights_ppm": {
     "originality": 250000,

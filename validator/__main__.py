@@ -378,9 +378,9 @@ class Validator:
         return check_all(
             portfolio=result.portfolio,
             challenge=challenge,
-            receipt_calls=(),
-            measured_rcc=result.measured_usage.get("rcc", 0),
-            measured_search_calls=result.measured_usage.get("search_calls", 0),
+            receipt_calls=result.receipt_calls,
+            measured_rcc=result.measured_usage["rcc"],
+            measured_search_calls=result.measured_usage["search_calls"],
             declared_models=declared_models,
             wall_seconds=result.wall_seconds,
             timed_out=result.timed_out,

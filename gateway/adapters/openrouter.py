@@ -60,6 +60,14 @@ _ATTRIBUTION_HEADERS = {
 }
 
 
+#: What an unmeasurable call is charged, in tokens. Deliberately large: a call whose cost we cannot
+#: read cannot be reconciled against the provider's invoice (27), and the direction of the error has
+#: to make it not worth provoking. Sized at roughly a full research prompt rather than at a context
+#: window, so an isolated provider glitch does not consume a whole round's ceiling in one call.
+_UNMEASURED_IN = 100_000
+_UNMEASURED_OUT = 8_192
+
+
 class AdapterError(RuntimeError):
     """A call that could not be made, or a response that could not be trusted."""
 
@@ -452,17 +460,29 @@ def _usage(raw: Any) -> dict[str, int]:
     """
     usage = getattr(raw, "usage", None) or (raw.get("usage") if isinstance(raw, dict) else None)
     if usage is None:
-        _log.error("provider response carried no usage block; charging a conservative estimate")
-        return {"tokens_in": 100_000, "tokens_out": 0}
+        _log.error("provider response carried no usage block; charging %d tokens", _UNMEASURED_IN)
+        return {"tokens_in": _UNMEASURED_IN, "tokens_out": 0}
+
     if isinstance(usage, dict):
-        return {
-            "tokens_in": int(usage.get("prompt_tokens", 0)),
-            "tokens_out": int(usage.get("completion_tokens", 0)),
-        }
-    return {
-        "tokens_in": int(getattr(usage, "prompt_tokens", 0) or 0),
-        "tokens_out": int(getattr(usage, "completion_tokens", 0) or 0),
-    }
+        prompt, completion = usage.get("prompt_tokens"), usage.get("completion_tokens")
+    else:
+        prompt = getattr(usage, "prompt_tokens", None)
+        completion = getattr(usage, "completion_tokens", None)
+
+    # A *partial* usage block is charged as conservatively as an absent one. The first version read
+    # each side with a zero default, so a provider or proxy that reported only completion tokens
+    # made every input token free — and input dominates a research prompt. Absent and partial are
+    # the same fact: we cannot measure it, and treating what we cannot measure as free is what makes
+    # it worth provoking.
+    if not isinstance(prompt, int) or isinstance(prompt, bool) or prompt < 0:
+        _log.error("provider reported prompt_tokens=%r; charging %d", prompt, _UNMEASURED_IN)
+        prompt = _UNMEASURED_IN
+    if not isinstance(completion, int) or isinstance(completion, bool) or completion < 0:
+        _log.error(
+            "provider reported completion_tokens=%r; charging %d", completion, _UNMEASURED_OUT
+        )
+        completion = _UNMEASURED_OUT
+    return {"tokens_in": prompt, "tokens_out": completion}
 
 
 def _first_choice(raw: Any) -> Any:

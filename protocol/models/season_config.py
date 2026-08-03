@@ -126,6 +126,14 @@ class ChallengeGeneration(ProtocolModel):
         ...,
         description="Where generated packs live (section 7.5). Redis: write a pack once, read it many times during execution, expire it after the dedup window, and survive a restart mid-round without losing a pack whose hash is already committed.\n\n`sandbox_reachable` must be false. A laboratory that could reach the store would read the entire pack -- every problem including ones it has not been issued, and other rounds' packs. The store is the validator's; delivery to the laboratory is the runner's, as its structured input.",
     )
+    minimum_degradation_gap_ppm: conint(ge=1, le=1000000) = Field(
+        ...,
+        description="7.4 step 5 condition 5: the smallest gap, in ppm, between a judge panel's score for an intact portfolio and its score for a deliberately degraded one, below which the problem is rejected. The sharpest of the five conditions — spread among real answers can be noise, but a panel that cannot tell a damaged portfolio from a whole one was never measuring quality. Declared here rather than defaulted in code, because a threshold that decides which challenges enter a hashed pack must be part of the hashed config.",
+    )
+    maximum_judge_instability_ppm: conint(ge=1, le=1000000) = Field(
+        ...,
+        description='7.4 step 5 condition 3: the largest spread, in ppm, between repeated judgings of the *same* portfolio that a problem may produce. Above it the panel disagrees with itself, so its scores on real answers are noise.',
+    )
 
 
 class Provider1(Enum):

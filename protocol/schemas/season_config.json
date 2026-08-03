@@ -129,11 +129,13 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "protocol_version",
         "candidates_per_slot",
         "dedup_lookback_days",
         "duplicate_threshold_ppm",
         "generators",
+        "maximum_judge_instability_ppm",
+        "minimum_degradation_gap_ppm",
+        "protocol_version",
         "store"
       ],
       "properties": {
@@ -242,6 +244,18 @@
               "minimum": 1
             }
           }
+        },
+        "minimum_degradation_gap_ppm": {
+          "description": "7.4 step 5 condition 5: the smallest gap, in ppm, between a judge panel's score for an intact portfolio and its score for a deliberately degraded one, below which the problem is rejected. The sharpest of the five conditions \u2014 spread among real answers can be noise, but a panel that cannot tell a damaged portfolio from a whole one was never measuring quality. Declared here rather than defaulted in code, because a threshold that decides which challenges enter a hashed pack must be part of the hashed config.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "maximum_judge_instability_ppm": {
+          "description": "7.4 step 5 condition 3: the largest spread, in ppm, between repeated judgings of the *same* portfolio that a problem may produce. Above it the panel disagrees with itself, so its scores on real answers are noise.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
         }
       }
     },
