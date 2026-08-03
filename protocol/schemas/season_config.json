@@ -535,7 +535,9 @@
         "pack_commit_offset",
         "reveal_offset",
         "execution_close_offset",
-        "weights_offset"
+        "weights_offset",
+        "anchor_block",
+        "anchor_date"
       ],
       "properties": {
         "blocks_per_day": {
@@ -569,6 +571,16 @@
         "weights_offset": {
           "description": "T+23h.",
           "type": "integer"
+        },
+        "anchor_block": {
+          "description": "A block that is an epoch start: anchor_block % blocks_per_day == 0. With anchor_date it fixes the mapping from epoch index to calendar date, so a round's identity is derived from the chain rather than from a clock. Two validators either side of midnight would otherwise label the same round differently, fail to recognise each other's commitments, and generate packs they could not compare. Every validator on a subnet must share this pair.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "anchor_date": {
+          "description": "The ISO calendar date of the round beginning at anchor_block. A wrong value is not a consensus failure \u2014 every validator sharing it still agrees with every other \u2014 so nothing on chain would surface it; validator --check compares it against the clock at startup instead.",
+          "type": "string",
+          "format": "date"
         }
       }
     },

@@ -134,7 +134,10 @@ gateway/             The Research Compute Gateway — §3.4
   __main__.py          the gateway process
 
 validator/
-  cycle.py             §21's seven boundaries, orderings enforced at load
+  cycle.py             §21's boundaries and round identity, orderings enforced at load
+  scheduler.py         §21: which step is due, decided from a block height. Pure
+  driver.py            the loop: poll, ask the scheduler, run, record
+  roundstate.py        §6.2, §22: the recovery record and the gated public document
   challenge_factory/   §7: plan → generate → lint → safety → dedup → critic → probe → commit
   sandbox/             §9, §10: hardened container and the single-request runner
   canonicalizer/       §14: the neutral fact sheet

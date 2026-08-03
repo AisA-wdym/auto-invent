@@ -155,6 +155,20 @@ def test_the_floor_is_public():
     assert state().public_view()["floor_ppm"] == 500_000
 
 
+def test_the_precommitted_salt_never_reaches_the_public_view():
+    """It is in the recovery document and not in the published one. The salt becomes public later,
+    when the pack commitment carries it forward, so this is not a secrecy requirement so much as a
+    narrower surface for free — and `as_document` adds it *after* `public_view` returns, so the
+    exclusion is by construction rather than by a filter somebody could remove."""
+    secret = "9f" * 32
+    full = state(phase=Phase.DONE.name, salt_hex=secret, salt_commitment="cd" * 32)
+    view = full.public_view()
+    assert "salt_hex" not in view and "salt_commitment" not in view
+    assert secret not in json.dumps(view)
+    assert full.as_document()["salt_hex"] == secret
+    assert RoundState.from_document(full.as_document()).salt_hex == secret
+
+
 def test_the_public_view_carries_no_credential_material():
     """6.3 publishes source and portfolios; credentials are excluded by construction — and this is
     the document a public web page is built from."""

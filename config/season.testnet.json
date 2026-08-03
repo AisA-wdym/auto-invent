@@ -322,7 +322,9 @@
     "pack_commit_offset": -100,
     "reveal_offset": 0,
     "execution_close_offset": 4200,
-    "weights_offset": 6900
+    "weights_offset": 6900,
+    "anchor_block": 8762400,
+    "anchor_date": "2026-08-03"
   },
   "reference_labs": [
     {

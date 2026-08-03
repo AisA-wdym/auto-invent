@@ -33,6 +33,32 @@ no guarantee at all, so it is refused at load rather than discovered on a day it
 Every boundary is a block height. Wall clock would drift between validators and would make "before
 the randomness" a question about NTP; a block height is the same fact for everyone reading the same
 chain.
+
+## Two rounds are live at once, and that is not a bug
+
+The cycle spans from `salt_commit_offset` to the next epoch start — 7,650 blocks with the example
+config — which is more than the 7,200 blocks in a day. So the tail of one round overlaps the head of
+the next, by design: yesterday's weights are still due at +6,900 when today's salt must be committed
+at 7,200 − 450 = +6,750.
+
+`live_rounds` returns every round whose window contains a block, and the geometry guarantees at most
+two. The overlap is safe because the two rounds want different things in it — one wants a weight
+submission, the other wants a commitment — but code that assumed a single current round would either
+skip a salt commit or submit yesterday's weights against today's state, and both are silent.
+
+## A round's identity comes from the chain, with the calendar attached
+
+The round id is an ISO date, because that is what a commitment carries, what Redis is keyed by and
+what a reader wants to see. But the *date* cannot come from a clock: two validators either side of
+midnight would label the same round differently, fail to recognise each other's commitments, and
+generate packs they could not compare.
+
+So the identity is the epoch index — `block // blocks_per_day`, a fact about the chain — and the
+date is derived from it through an anchor in the season config, which every validator on the subnet
+shares. The anchor is one (block, date) pair; the mapping is exact because `blocks_per_day` blocks
+is exactly one day. A wrong anchor shifts every validator's labels by the same amount, so they still
+agree with each other — but they would disagree with the calendar, which is why
+`assert_anchor_is_plausible` exists and is called from `--check` rather than from here.
 """
 
 from __future__ import annotations
@@ -40,6 +66,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date, timedelta
 from enum import Enum
 
 __all__ = ["CycleConfig", "CycleError", "Phase"]
@@ -77,6 +104,11 @@ class CycleConfig:
     reveal_offset: int
     execution_close_offset: int
     weights_offset: int
+    #: A block that is an epoch start, and the calendar date of the round that begins there. Shared
+    #: through the season config so every validator derives the same label from the same chain. No
+    #: default: a guessed anchor produces plausible dates that are silently wrong.
+    anchor_block: int
+    anchor_date: str
 
     def __post_init__(self) -> None:
         self.assert_ordering()
@@ -93,6 +125,8 @@ class CycleConfig:
             reveal_offset=int(cycle["reveal_offset"]),  # type: ignore[index]
             execution_close_offset=int(cycle["execution_close_offset"]),  # type: ignore[index]
             weights_offset=int(cycle["weights_offset"]),  # type: ignore[index]
+            anchor_block=int(cycle["anchor_block"]),  # type: ignore[index]
+            anchor_date=str(cycle["anchor_date"]),  # type: ignore[index]
         )
 
     def assert_ordering(self) -> None:
@@ -133,12 +167,34 @@ class CycleConfig:
                 f"({self.execution_close_offset}) and weights ({self.weights_offset}) must be in "
                 "that order: weights cannot be computed before execution has closed."
             )
+        self._assert_anchor()
         if self.weights_offset >= self.blocks_per_day + self.reveal_offset:
             raise CycleError(
                 f"weights_offset ({self.weights_offset}) does not leave the day's "
                 f"{self.blocks_per_day} blocks before the next epoch begins. A cycle that overruns "
                 "its day would submit weights for one round during the next one."
             )
+
+    def _assert_anchor(self) -> None:
+        """The anchor must name an epoch start and a real date.
+
+        An anchor part-way through an epoch would make `round_id` disagree with `epoch_index` by a
+        fraction of a day, which rounds to either zero or one depending on the block — so half the
+        rounds would be labelled with yesterday's date.
+        """
+        if self.anchor_block % self.blocks_per_day != 0:
+            raise CycleError(
+                f"anchor_block ({self.anchor_block}) is not a multiple of blocks_per_day "
+                f"({self.blocks_per_day}), so it does not name the start of an epoch. Every "
+                "round's date is derived from it, and an anchor part-way through a day would label "
+                "some rounds with yesterday's date and some with today's."
+            )
+        try:
+            date.fromisoformat(self.anchor_date)
+        except ValueError as error:
+            raise CycleError(
+                f"anchor_date ({self.anchor_date!r}) is not an ISO date: {error}"
+            ) from error
 
     def phase_of(self, blocks_from_epoch: int) -> Phase:
         """Which phase a block height falls in, relative to the day's epoch start.
@@ -175,5 +231,83 @@ class CycleConfig:
         """
         return (block // self.blocks_per_day) * self.blocks_per_day
 
-    def blocks_from_epoch(self, block: int) -> int:
-        return block - self.epoch_start(block) + self.reveal_offset
+    def epoch_index(self, block: int) -> int:
+        """Which day this block belongs to, counted from the chain's genesis."""
+        return block // self.blocks_per_day
+
+    def epoch_start_of(self, epoch_index: int) -> int:
+        return epoch_index * self.blocks_per_day
+
+    def offset_in(self, epoch_index: int, block: int) -> int:
+        """Where a block sits relative to a given round's reveal point.
+
+        Negative before that round's reveal. This replaces an earlier `blocks_from_epoch(block)`
+        that took only a block: it computed `block - epoch_start(block) + reveal_offset`, which for
+        the example config is always in [0, 7200) — so it never produced a negative offset, every
+        pre-reveal phase was unreachable, and `phase_of` reported EXECUTING at the epoch start.
+
+        The defect was invisible because both functions were individually correct about what they
+        claimed. What was wrong was the assumption underneath: a block does not belong to one round,
+        so an offset cannot be computed from a block alone. The round has to be named.
+        """
+        return block - self.epoch_start_of(epoch_index) + self.reveal_offset
+
+    def round_opens(self) -> int:
+        """The offset of a round's first action. Before this, the round has nothing to do."""
+        return self.salt_commit_offset
+
+    def round_closes(self) -> int:
+        """The offset at which a round is over: the next epoch start.
+
+        Weights are due at `weights_offset` and this is the last block on which they may still be
+        submitted. Later than that and the submission would land during the next round's own weights
+        window, where the chain cannot tell which round it was for.
+        """
+        return self.blocks_per_day + self.reveal_offset
+
+    def live_rounds(self, block: int) -> tuple[int, ...]:
+        """Every round whose window contains this block, oldest first.
+
+        At most two, and the arithmetic says why: the window spans
+        `round_closes() - round_opens()` blocks and rounds start every `blocks_per_day`, so the
+        overlap is one round deep for any sane config. The candidates are this block's own epoch and
+        the next one — the previous epoch's window closes exactly at this epoch's start.
+        """
+        current = self.epoch_index(block)
+        live = [
+            index
+            for index in (current, current + 1)
+            if self.round_opens() <= self.offset_in(index, block) < self.round_closes()
+        ]
+        return tuple(live)
+
+    def round_id(self, epoch_index: int) -> str:
+        """The round's label: an ISO date derived from the epoch index through the season anchor.
+
+        Derived rather than read from a clock, so two validators either side of midnight agree.
+        """
+        anchor_index = self.anchor_block // self.blocks_per_day
+        return (
+            date.fromisoformat(self.anchor_date) + timedelta(days=epoch_index - anchor_index)
+        ).isoformat()
+
+    def assert_anchor_is_plausible(self, *, block: int, now: date) -> None:
+        """Check the anchor against the calendar. Called from `--check`, not from construction.
+
+        Every validator with the same anchor agrees with every other, whatever the anchor says —
+        so a wrong anchor is not a consensus failure, it is a labelling failure, and it would be
+        found months later by someone reading a date. This catches it at deployment.
+
+        Not called from `__post_init__` because it needs a clock and a chain height, and this module
+        must be constructible from a config alone.
+        """
+        derived = date.fromisoformat(self.round_id(self.epoch_index(block)))
+        drift = abs((derived - now).days)
+        if drift > 1:
+            raise CycleError(
+                f"the anchor puts block {block} in round {derived.isoformat()}, but today is "
+                f"{now.isoformat()} — {drift} days out. Every validator sharing this anchor "
+                "would agree with each other and disagree with the calendar. Fix "
+                "anchor_block/anchor_date in the season config: for this chain, anchor_block "
+                f"{self.epoch_start_of(self.epoch_index(block))} is round {now.isoformat()}."
+            )

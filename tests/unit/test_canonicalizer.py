@@ -1,8 +1,8 @@
-"""The canonicalizer, prior art and the daily cycle: architecture.md 14, 15, 21.
+"""The canonicalizer and prior art: architecture.md 14, 15.
 
-Three modules with one thing in common: each is where a *claim* becomes something else. The
-canonicalizer turns persuasion into a fact sheet, prior art turns a search into a bounded statement,
-and the cycle turns an ordering into a checked invariant.
+Two modules with one thing in common: each is where a *claim* becomes something else. The
+canonicalizer turns persuasion into a fact sheet, and prior art turns a search into a bounded
+statement.
 """
 
 from __future__ import annotations
@@ -14,7 +14,6 @@ import pytest
 
 from protocol.fixedpoint import PPM
 from validator.canonicalizer.neutral import canonicalize, strip_text
-from validator.cycle import CycleConfig, CycleError, Phase
 from validator.prior_art.report import (
     SAME_MECHANISM_PPM,
     Match,
@@ -302,90 +301,3 @@ def test_the_search_method_is_published_so_a_reader_can_judge_what_it_could_find
     document = report.as_document()
     assert document["queries"] == ["a", "b"]
     assert document["corpora_searched"] == ["papers", "patents"]
-
-
-# --------------------------------------------------------------------------
-# 21: the cycle ordering
-# --------------------------------------------------------------------------
-
-
-def cycle(**over) -> CycleConfig:
-    fields = dict(
-        blocks_per_day=7_200,
-        submission_close_offset=-600,
-        salt_commit_offset=-450,
-        randomness_offset=-300,
-        pack_commit_offset=-100,
-        reveal_offset=0,
-        execution_close_offset=4_200,
-        weights_offset=6_900,
-    )
-    fields.update(over)
-    return CycleConfig(**fields)
-
-
-def test_the_example_season_cycle_validates():
-    CycleConfig.from_season(SEASON).assert_ordering()
-
-
-def test_a_salt_committed_after_the_randomness_is_refused():
-    """The ordering 7.3 depends on: a validator that chose its salt with the randomness in hand
-    could grind it until the seed produced a pack it liked."""
-    with pytest.raises(CycleError, match="grind the salt"):
-        cycle(salt_commit_offset=-200)
-
-
-def test_a_pack_committed_after_reveal_is_refused():
-    """The pack hash must be on chain before any bundle opens, or a validator could read a
-    submission and regenerate its challenges to suit it."""
-    with pytest.raises(CycleError, match="before any bundle opens"):
-        cycle(pack_commit_offset=100)
-
-
-def test_generation_before_the_randomness_is_refused():
-    with pytest.raises(CycleError, match="seed needs the randomness"):
-        cycle(randomness_offset=-50)
-
-
-def test_submissions_closing_after_the_salt_commit_is_refused():
-    """A miner could otherwise submit after seeing which validators had committed."""
-    with pytest.raises(CycleError, match="Submissions must close first"):
-        cycle(submission_close_offset=-400)
-
-
-def test_weights_before_execution_closes_is_refused():
-    with pytest.raises(CycleError, match="cannot be computed before execution"):
-        cycle(weights_offset=3_000)
-
-
-def test_a_cycle_that_overruns_its_day_is_refused():
-    """It would submit weights for one round during the next one."""
-    with pytest.raises(CycleError, match="overruns"):
-        cycle(weights_offset=7_300)
-
-
-@pytest.mark.parametrize(
-    ("blocks", "expected"),
-    [
-        (-700, Phase.BEFORE_SUBMISSION_CLOSE),
-        (-500, Phase.AWAITING_SALT_COMMIT),
-        (-400, Phase.AWAITING_RANDOMNESS),
-        (-200, Phase.GENERATING),
-        (-50, Phase.AWAITING_REVEAL),
-        (100, Phase.EXECUTING),
-        (5_000, Phase.SCORING),
-        (6_900, Phase.AWAITING_WEIGHTS),
-        (7_000, Phase.DONE),
-    ],
-)
-def test_each_block_offset_maps_to_its_phase(blocks, expected):
-    assert cycle().phase_of(blocks) is expected
-
-
-def test_the_epoch_start_is_derived_from_the_chain_rather_than_the_clock():
-    """A day boundary from wall clock would put two validators in different days either side of
-    midnight, generating packs for different dates and unable to compare."""
-    config = cycle()
-    assert config.epoch_start(7_250) == 7_200
-    assert config.epoch_start(7_199) == 0
-    assert config.epoch_start(14_400) == 14_400

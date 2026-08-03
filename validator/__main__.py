@@ -28,10 +28,14 @@ process launch.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import logging
 import os
+import secrets
 import sys
+from dataclasses import replace
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -57,11 +61,18 @@ from validator.challenge_factory.store import (
 )
 from validator.challenge_factory.taxonomy import Taxonomy, plan
 from validator.cycle import CycleConfig, CycleError, Phase
+from validator.driver import Driver, describe
 from validator.judge.bradley_terry import fit, strengths_to_ppm
 from validator.judge.pairwise import combine_orders, swiss_pairings
 from validator.judge.panels import panels_from_season, pins_for
 from validator.judge.pointwise import aggregate
 from validator.model_client import ModelClient
+from validator.roundstate import (
+    InMemoryRoundStore,
+    RedisRoundStore,
+    RoundState,
+    RoundStore,
+)
 from validator.sandbox.container import (
     Limits,
     SandboxRunner,
@@ -174,6 +185,22 @@ class Validator:
             )
             self.store = InMemoryStore()
 
+        #: Round state: the recovery record and the document the dashboard reads. Same Redis as the
+        #: packs and the same rule — round state includes the day's problems, so a laboratory that
+        #: could read it could read the pack, and arriving by a different key prefix would not help.
+        if args.redis_url:
+            self.round_store: RoundStore = RedisRoundStore(url=args.redis_url)
+        else:
+            # The same degradation as above, and worse here: without durable round state a restart
+            # cannot tell whether it already published a salt commitment, so the round is abandoned
+            # rather than resumed.
+            _log.warning(
+                "no --redis-url: round state is in memory. A restart cannot tell whether this "
+                "validator already published a salt commitment, so any round in progress is "
+                "abandoned rather than resumed."
+            )
+            self.round_store = InMemoryRoundStore()
+
         self.ledger = Ledger()
         self.sandbox = SandboxRunner()
         #: 7.4 step 5's probe. None until the round loop can drive reference-laboratory runs and a
@@ -262,6 +289,8 @@ class Validator:
             f"{self.scoring.mechanism_floor_ppm / 10_000:.0f}%\n"
             f"  weights    tau {self.weights.temperature_ppm / 1_000_000:.2f}, cap "
             f"{self.weights.maximum_weight_ppm / 10_000:.1f}%, burn uid {self.weights.burn_uid}\n"
+            f"  rounds     {self.cycle.anchor_date} at block {self.cycle.anchor_block}, "
+            f"{self.cycle.blocks_per_day} blocks/day\n"
             f"  cycle      salt {self.cycle.salt_commit_offset} < randomness "
             f"{self.cycle.randomness_offset} < pack {self.cycle.pack_commit_offset} < reveal "
             f"{self.cycle.reveal_offset}\n"
@@ -273,8 +302,22 @@ class Validator:
     # A round
     # ------------------------------------------------------------------
 
-    def phase(self) -> Phase:
-        return self.cycle.phase_of(self.cycle.blocks_from_epoch(self.chain.current_block()))
+    def live_rounds(self) -> list[tuple[str, Phase]]:
+        """Every round live at the head, with the phase it is in.
+
+        A list rather than one phase, because at some blocks there are two. The single-phase version
+        this replaces asked `phase_of(blocks_from_epoch(block))`, which could not be right: a block
+        does not belong to one round, so an offset cannot be derived from a block alone. See
+        `CycleConfig.offset_in`.
+        """
+        block = self.chain.current_block()
+        return [
+            (
+                self.cycle.round_id(index),
+                self.cycle.phase_of(self.cycle.offset_in(index, block)),
+            )
+            for index in self.cycle.live_rounds(block)
+        ]
 
     def commit_salt(self, *, date: str, salt: bytes) -> tuple[str, int]:
         """7.3's precommitment. Returns (commitment, block).
@@ -450,8 +493,8 @@ class Validator:
             # would be a larger error than proceeding with a flagged one.
             _log.error(
                 "order-swap inconsistency %d ppm exceeds the %d ppm ceiling in 19. This panel is "
-                "largely measuring presentation position; its verdicts should be discounted and the "  # noqa: E501 - one-line diagnostic listing every reachable enforcement point
-                "judge that caused it removed.",
+                "largely measuring presentation position; its verdicts should be discounted and "
+                "the judge that caused it removed.",
                 inconsistency,
                 ceiling,
             )
@@ -463,6 +506,205 @@ class Validator:
 
     def submit(self, allocation: Any) -> None:
         self.chain.submit_weights(allocation.uids, allocation.weights)
+
+    # ------------------------------------------------------------------
+    # The scheduler's five steps. `validator/driver.py` calls these.
+    # ------------------------------------------------------------------
+
+    def execute_step(self, state: RoundState, *, block: int, deadline_block: int) -> RoundState:
+        """Reveal the sealed bundles and run every laboratory against every challenge.
+
+        Not implemented. What is missing is named rather than approximated, because the pieces that
+        exist would compose into something that looked like a round and measured nothing:
+
+        * reading this round's `SubmissionCommitment`s from the metagraph and resolving each to
+          a uid at one consistent height;
+        * fetching each `artifact_url`, verifying the bytes against `bundle_digest`, and loading the
+          image — none of which exists yet, and all of which handles miner-chosen input;
+        * unsealing each credential envelope through `chain.unseal` and holding the key in the
+          gateway rather than anywhere near the container;
+        * iterating challenges per laboratory through `build_runner`, gating each result with
+          `gate`, and canonicalising with `canonicalise`.
+
+        `Runner.execute` already does one laboratory against one challenge, and `gate` and
+        `canonicalise` already do their part. It is the fetch-and-verify layer and the per-round
+        iteration that are absent.
+        """
+        raise NotImplementedError(
+            "execute is not implemented: bundle fetch-and-verify and the per-round iteration over "
+            "laboratories are missing. See Validator.execute_step."
+        )
+
+    execute_step._not_implemented = True  # type: ignore[attr-defined]
+
+    def score_step(self, state: RoundState, *, block: int, deadline_block: int) -> RoundState:
+        """Prior art, screening, the pairwise tournament, and the daily and rolling scores.
+
+        Not implemented, for the same reason. Every piece is built and unit-tested — `report`,
+        `screen_portfolio`, `swiss_pairings`, `combine_orders`, `fit`, `aggregate`,
+        `challenge_score`, `daily_score`, `rolling_score` — and nothing composes them over a round's
+        executions — which is what turns per-portfolio numbers into the standings that
+        `submit_weights_step` reads.
+        """
+        raise NotImplementedError(
+            "score is not implemented: the per-round composition of prior art, screening, the "
+            "tournament and the score ladder is missing. See Validator.score_step."
+        )
+
+    score_step._not_implemented = True  # type: ignore[attr-defined]
+
+    def unimplemented_steps(self) -> tuple[str, ...]:
+        """Which steps cannot run yet.
+
+        Reported rather than discovered. A loop that entered a round, published a salt commitment
+        and a pack hash on a live chain, and *then* found it could not execute would have spent two
+        extrinsics and a generation budget to produce nothing — and would do it again tomorrow. So
+        `main` refuses to start the loop while this is non-empty, and says which steps are missing.
+        """
+        return tuple(
+            name
+            for name in ("commit_salt", "generate", "execute", "score", "submit_weights")
+            if getattr(getattr(type(self), f"{name}_step", None), "_not_implemented", False)
+        )
+
+    def commit_salt_step(self, state: RoundState, *, block: int) -> RoundState:
+        """Draw a salt, publish its commitment, and record both for recovery.
+
+        The salt is stored because the commitment binds a value only this process knows: a restart
+        before generation would otherwise leave a commitment on chain that no seed can be derived
+        against, which is unrecoverable rather than merely inconvenient.
+        """
+        salt = secrets.token_bytes(32)
+        commitment, at_block = self.commit_salt(date=state.date, salt=salt)
+        return replace(
+            state,
+            salt_hex=salt.hex(),
+            salt_commitment=commitment,
+            block=at_block,
+        )
+
+    def generate_step(self, state: RoundState, *, block: int, deadline_block: int) -> RoundState:
+        """7.3 and 7.4: randomness, seed, pack, hash on chain, store — in that order.
+
+        One step because 7.4 step 6 requires the hash on chain before the pack reaches Redis. There
+        is no legal point between them at which a restart could resume.
+        """
+        if not state.salt_hex or not state.salt_commitment:
+            raise ChainError(
+                f"round {state.date} has no recorded salt, so its on-chain commitment cannot be "
+                "honoured. The round is not recoverable and must not generate against a fresh "
+                "salt: the commitment would not match."
+            )
+        epoch_index = self.cycle.epoch_index(block) if block >= 0 else 0
+        for index in self.cycle.live_rounds(block):
+            if self.cycle.round_id(index) == state.date:
+                epoch_index = index
+                break
+        randomness_block = (
+            self.cycle.epoch_start_of(epoch_index)
+            + self.cycle.randomness_offset
+            - self.cycle.reveal_offset
+        )
+        block_hash = self.chain.block_hash(randomness_block)
+        seed = self.derive_seed(
+            date=state.date,
+            salt=bytes.fromhex(state.salt_hex),
+            commitment=state.salt_commitment,
+            block_hash=block_hash,
+        )
+        pack_hash = asyncio.run(
+            self.generate_pack(
+                date=state.date, seed=seed, salt_commitment_hex=state.salt_commitment
+            )
+        )
+        # Read back through `read_pack`, which re-verifies the stored bytes against the committed
+        # hash. Trusting the in-memory result instead would skip the one check that catches a pack
+        # edited between the commitment and the read.
+        stored = self.store.read_pack(state.date)
+        if stored is None:
+            raise StoreError(
+                f"the pack for {state.date} was committed as {pack_hash} and cannot be read back. "
+                "The hash is on chain, so the round cannot be regenerated against it."
+            )
+        return replace(
+            state,
+            pack_hash=stored.pack_hash,
+            challenge_count=len(stored.challenges),
+            challenges=stored.challenges,
+            challenges_per_generator=dict(stored.challenges_per_generator),
+            block=block,
+        )
+
+    def submit_weights_step(self, state: RoundState, *, block: int) -> RoundState:
+        """20: allocate from the standings this round already computed, and submit.
+
+        Reads `state.standings` rather than recomputing. A second computation here would eventually
+        disagree with the numbers the round published, and the published ones are what a miner
+        checked.
+        """
+        if not state.standings:
+            raise ChainError(
+                f"round {state.date} has no standings, so there is nothing to allocate. A weight "
+                "vector built from an empty field would burn the day's emission without having "
+                "measured anything, which is a different claim from 20.4's burn."
+            )
+        candidates = [
+            Candidate(
+                uid=entry.uid,
+                rolling_score_ppm=entry.rolling_score_ppm,
+                valid_challenges=entry.valid_challenges,
+                # A laboratory with a recorded failed gate is not a candidate at all. Read from the
+                # lab record rather than re-derived: the gate outcomes were published, and a second
+                # derivation here would eventually disagree with what a miner was shown.
+                hard_gates_passed=not any(
+                    lab.uid == entry.uid and lab.failed_gates for lab in state.labs
+                ),
+                artifacts_available=True,
+            )
+            for entry in state.standings
+        ]
+        allocation = self.allocate_weights(candidates, floor_ppm=state.floor_ppm)
+        self.submit(allocation)
+        return replace(state, burned=allocation.burned, block=block)
+
+
+class ValidatorSteps:
+    """Adapts `Validator` to the driver's `Steps` protocol.
+
+    A thin adapter rather than renaming the validator's methods, because two of the names collide:
+    `Validator.commit_salt(date=, salt=)` is the chain call and the step is the thing that draws a
+    salt and records it, and `generate_pack` is the pipeline while the step is generate-and-commit.
+    Collapsing them would make one method mean both, and the one that took a `date` would start
+    taking a `RoundState`.
+    """
+
+    def __init__(self, validator: Validator) -> None:
+        self._validator = validator
+
+    def commit_salt(self, state: RoundState, *, block: int) -> RoundState:
+        return self._validator.commit_salt_step(state, block=block)
+
+    def generate(self, state: RoundState, *, block: int, deadline_block: int) -> RoundState:
+        return self._validator.generate_step(state, block=block, deadline_block=deadline_block)
+
+    def execute(self, state: RoundState, *, block: int, deadline_block: int) -> RoundState:
+        return self._validator.execute_step(state, block=block, deadline_block=deadline_block)
+
+    def score(self, state: RoundState, *, block: int, deadline_block: int) -> RoundState:
+        return self._validator.score_step(state, block=block, deadline_block=deadline_block)
+
+    def submit_weights(self, state: RoundState, *, block: int) -> RoundState:
+        return self._validator.submit_weights_step(state, block=block)
+
+
+def build_driver(validator: Validator) -> Driver:
+    """The loop, wired to this validator. One place, so `--once` and the loop cannot diverge."""
+    return Driver(
+        chain=validator.chain,
+        cycle=validator.cycle,
+        store=validator.round_store,
+        steps=ValidatorSteps(validator),
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -536,23 +778,64 @@ def main(argv: list[str] | None = None) -> int:
 
     _log.info("validator starting\n%s", validator.describe())
     try:
-        phase = validator.phase()
+        block = validator.chain.current_block()
+        validator.cycle.assert_anchor_is_plausible(block=block, now=date.today())
     except ChainError as error:
         print(f"cannot read the chain: {error}", file=sys.stderr)
         return 3
+    except CycleError as error:
+        # Refused at startup rather than tolerated. Every validator sharing a wrong anchor agrees
+        # with every other, so nothing on chain would ever surface it.
+        print(f"the season's epoch anchor is wrong: {error}", file=sys.stderr)
+        return 2
 
-    _log.info("current phase: %s", phase.name)
-    if args.once:
-        _log.info(
-            "--once: the round loop is not yet wired to the chain's block stream. Every stage is "
-            "built and reachable (see --check); what remains is the block-driven scheduler."
+    engine = build_driver(validator)
+    for round_id, phase in validator.live_rounds():
+        _log.info("round %s is in %s at block %d", round_id, phase.name, block)
+
+    missing = validator.unimplemented_steps()
+    if missing:
+        # A dry run and a refusal, not a loop that abandons every round at the first missing step.
+        # Entering a round would publish a salt commitment and a pack hash on a live chain and spend
+        # a generation budget, then abandon — and do it again tomorrow.
+        print(
+            f"the round loop cannot run: {', '.join(missing)} "
+            f"{'is' if len(missing) == 1 else 'are'} not implemented.\n"
+            "Starting anyway would publish a salt commitment and a pack hash on chain, spend a "
+            "generation budget, and then abandon the round at the missing step — once a day, for "
+            "nothing. What the scheduler would do at this block:\n",
+            file=sys.stderr,
         )
+        try:
+            print(describe(engine.preview(block)), file=sys.stderr)
+        except ChainError as error:
+            print(f"  (cannot preview: {error})", file=sys.stderr)
+        return 4
+
+    if args.once:
+        _log.info("--once: one tick, then exit")
+        for outcome in engine.run(max_ticks=1):
+            _log.info(
+                "round %s offset %+d: %s %s",
+                outcome.round_id,
+                outcome.offset,
+                outcome.kind,
+                outcome.step.name if outcome.step else "",
+            )
         return 0
 
-    _log.info(
-        "the block-driven round loop is not yet wired. Run with --check to validate this "
-        "deployment's configuration, or --once to report the current phase."
-    )
+    _log.info("entering the round loop")
+    try:
+        engine.run()
+    except KeyboardInterrupt:
+        _log.info("stopped")
+        return 0
+    except ChainError as error:
+        # The loop ends rather than continuing on the last height it saw: a validator that cannot
+        # read the chain cannot know which round it is in, and a step run against a boundary that
+        # passed an hour ago is the failure every window here exists to prevent.
+        print(f"the chain became unreadable: {error}", file=sys.stderr)
+        return 3
     return 0
 
 

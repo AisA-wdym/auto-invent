@@ -41,6 +41,7 @@ every read either succeeds or raises, and no method returns a plausible default.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
@@ -164,6 +165,14 @@ class ChainClient(Protocol):
         """The same, at a past height. For verifying when a salt was committed."""
         ...
 
+    def block_hash(self, block: int) -> bytes:
+        """The hash of one block. 7.3's post-deadline randomness.
+
+        A read of a *past* block, always: the seed mixes a hash that exists only after the salt was
+        committed, so asking for the head's hash would be asking for a value that is still changing.
+        """
+        ...
+
     def publish_commitment(self, payload: str) -> int:
         """Write this hotkey's commitment. Returns the block it landed in."""
         ...
@@ -228,7 +237,27 @@ class BittensorChain:
         return self._wallet
 
     def hotkey(self) -> str:
-        return str(self._signer().hotkey.ss58_address)
+        """This process's own hotkey.
+
+        A missing keyfile arrives here as a bare `FileNotFoundError` from deep inside the SDK, four
+        frames below anything this repo wrote. On a first deployment that is the most likely failure
+        of all, and a traceback naming `keyfiles.py` does not say which wallet was expected or how
+        to make one — so it is turned into a message that does.
+        """
+        try:
+            return str(self._signer().hotkey.ss58_address)
+        except FileNotFoundError as error:
+            raise ChainError(
+                f"no hotkey for wallet {self.wallet_name!r}/{self.hotkey_name!r}: {error}. A "
+                "validator signs its salt commitment, its pack commitment and its weight vector "
+                "with this key, so there is nothing it can do without one. Create or import it "
+                "with `btcli wallet new_hotkey`, or point --wallet/--hotkey at an existing pair."
+            ) from error
+        except Exception as error:  # noqa: BLE001 - the SDK raises a wide family here
+            raise ChainError(
+                f"cannot load the hotkey for {self.wallet_name!r}/{self.hotkey_name!r}: "
+                f"{type(error).__name__}: {error}"
+            ) from error
 
     def current_block(self) -> int:
         try:
@@ -244,6 +273,36 @@ class BittensorChain:
 
     def view_at(self, block: int) -> SubnetView:
         return self._view(block)
+
+    def block_hash(self, block: int) -> bytes:
+        """7.3's randomness, read from the chain rather than generated.
+
+        Refuses a future or current height. The head's hash is not yet final — asking for it would
+        return whatever the node has provisionally, and two validators asking at slightly different
+        moments would seed their generation differently from a value that was supposed to be shared.
+        """
+        head = self.current_block()
+        if block >= head:
+            raise ChainError(
+                f"block {block} is not in the past (head is {head}); its hash is not final. The "
+                "daily seed mixes a settled hash, or two validators reading at different moments "
+                "would derive different seeds from what is meant to be one shared value."
+            )
+        try:
+            digest = self._connected().get_block_hash(block)
+        except Exception as error:  # noqa: BLE001 - the SDK raises a different type per transport
+            raise ChainError(f"cannot read the hash of block {block}: {error}") from error
+        if not isinstance(digest, str) or not digest.startswith("0x"):
+            raise ChainError(
+                f"the node returned {digest!r} for the hash of block {block}, which is not a 0x "
+                "hex string. A seed derived from a mis-parsed hash is a seed no peer can reproduce."
+            )
+        try:
+            return bytes.fromhex(digest[2:])
+        except ValueError as error:
+            raise ChainError(
+                f"the hash of block {block} is not hex: {digest!r}"
+            ) from error
 
     def _view(self, block: int | None) -> SubnetView:
         client = self._connected()
@@ -540,6 +599,23 @@ class FakeChain:
 
     def view(self) -> SubnetView:
         return self._build(self.live_commitments, self.block)
+
+    def block_hash(self, block: int) -> bytes:
+        """Deterministic from the height, and only for the past.
+
+        Deterministic so a test can assert that two derivations of a seed agree; past-only so the
+        rule the real client enforces is the rule a test exercises. A fake that answered for the
+        head would let a test pass against a sequence the chain cannot produce.
+        """
+        if self.fail_reads:
+            raise ChainError("fake chain is unreachable")
+        if block >= self.block:
+            raise ChainError(
+                f"block {block} is not in the past (head is {self.block}); its hash is not final"
+            )
+        return hashlib.blake2b(
+            f"fake-block-{block}".encode(), digest_size=32
+        ).digest()
 
     def view_at(self, block: int) -> SubnetView:
         if self.fail_reads:

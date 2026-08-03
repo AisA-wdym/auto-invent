@@ -134,6 +134,26 @@ class RoundState:
     generation_rejections: Mapping[str, int] = field(default_factory=dict)
     #: Whether the day's emission burned because nobody cleared the floor (20.4).
     burned: bool = False
+    #: Which scheduler steps have completed, by `Step.name`. This is the recovery record, and it is
+    #: separate from `phase` because the two answer different questions: the phase says where the
+    #: chain is, and this says what this validator has actually done. A restarting validator reading
+    #: only the phase would know it was in AWAITING_RANDOMNESS and not whether it had published a
+    #: salt commitment — and republishing one is the exact failure 7.3's precommitment exists to
+    #: prevent.
+    steps_done: tuple[str, ...] = ()
+    #: The day's precommitted salt and its commitment, hex. Held so a restart between the salt
+    #: commitment and generation can still derive the seed the commitment binds — without them the
+    #: round is unrecoverable, because the commitment on chain is to a value only that process knew.
+    #:
+    #: Kept out of `public_view` deliberately. The salt does become public when the pack commitment
+    #: carries it forward, but there is nothing to gain by publishing it earlier and the
+    #: dashboard has no use for it, so the narrower surface is free.
+    salt_hex: str = ""
+    salt_commitment: str = ""
+    #: Why this round was given up on, empty if it was not. Recorded rather than inferred from a
+    #: missing step: "abandoned because the salt window closed" and "still working on it" look
+    #: identical from a step list, and the loop would re-decide an abandoned round every tick.
+    abandoned: str = ""
     updated_at_block: int = 0
 
     def phase_enum(self) -> Phase:
@@ -198,6 +218,8 @@ class RoundState:
                 for entry in self.standings
             ],
             "generation_rejections": dict(self.generation_rejections),
+            "steps_done": list(self.steps_done),
+            "abandoned": self.abandoned,
         }
         if self.disclosed():
             view["challenges"] = [dict(challenge) for challenge in self.challenges]
@@ -220,6 +242,10 @@ class RoundState:
         document.pop("challenges_withheld", None)
         document["challenges"] = [dict(challenge) for challenge in self.challenges]
         document["updated_at_block"] = self.updated_at_block
+        # Added here rather than in `public_view`, which is what keeps them out of the published
+        # document by construction instead of by a filter somebody could remove.
+        document["salt_hex"] = self.salt_hex
+        document["salt_commitment"] = self.salt_commitment
         return document
 
     @classmethod
@@ -261,6 +287,10 @@ class RoundState:
             challenges=tuple(body.get("challenges", ())),
             generation_rejections=dict(body.get("generation_rejections", {})),
             burned=bool(body.get("burned", False)),
+            steps_done=tuple(str(step) for step in body.get("steps_done", ())),
+            abandoned=str(body.get("abandoned", "")),
+            salt_hex=str(body.get("salt_hex", "")),
+            salt_commitment=str(body.get("salt_commitment", "")),
             updated_at_block=int(body.get("updated_at_block", 0)),
         )
 

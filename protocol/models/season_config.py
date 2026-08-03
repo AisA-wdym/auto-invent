@@ -10,6 +10,7 @@ schema it was generated from. A schema change is a protocol change and requires 
 
 from __future__ import annotations
 
+from datetime import date
 from enum import Enum
 from typing import Literal
 
@@ -185,6 +186,14 @@ class Cycle(ProtocolModel):
     reveal_offset: int = Field(..., description='T0, validator-only bundle reveal.')
     execution_close_offset: int = Field(..., description='T+14h.')
     weights_offset: int = Field(..., description='T+23h.')
+    anchor_block: conint(ge=0) = Field(
+        ...,
+        description="A block that is an epoch start: anchor_block % blocks_per_day == 0. With anchor_date it fixes the mapping from epoch index to calendar date, so a round's identity is derived from the chain rather than from a clock. Two validators either side of midnight would otherwise label the same round differently, fail to recognise each other's commitments, and generate packs they could not compare. Every validator on a subnet must share this pair.",
+    )
+    anchor_date: date = Field(
+        ...,
+        description='The ISO calendar date of the round beginning at anchor_block. A wrong value is not a consensus failure — every validator sharing it still agrees with every other — so nothing on chain would surface it; validator --check compares it against the clock at startup instead.',
+    )
 
 
 class Surface(Enum):
