@@ -1,0 +1,39 @@
+# The build context is the repository root (see ops/docker-compose.yml), so everything not excluded
+# here is transferred to the Docker daemon on every build — whether or not a COPY references it.
+#
+# The first two entries are the ones that matter. `.env` and `ops/secrets/` hold live provider
+# credentials; a context containing them puts them within reach of any later `COPY . .`, of the
+# daemon's build cache, and of anyone who can inspect an intermediate layer. Nothing in the
+# Dockerfiles copies them today, and that is not a property worth relying on.
+
+.env
+.env.*
+ops/secrets/
+*.pem
+*.key
+/run/secrets/
+
+# Wallets. Mounted read-only at runtime; never baked into an image.
+.bittensor/
+
+# 285 MB of virtualenv that the image rebuilds anyway, plus caches.
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+
+# Local state written at runtime.
+var/
+state/
+artifacts/
+
+# Not needed to run anything.
+.git/
+.github/
+tests/
+docs/
+*.md
+!README.md

@@ -1,0 +1,84 @@
+# Minimum and recommended hardware, in the format Bittensor subnets conventionally publish.
+#
+# The figures below are what the *controls* require rather than what the code happens to use. Two are
+# load-bearing and worth reading before sizing a box:
+#
+#   Memory. A laboratory container is capped at 8 GB with swap disabled (see
+#   validator/sandbox/container.py). Swap is disabled deliberately: a laboratory that exceeded its
+#   limit would otherwise swap rather than be killed, consuming host I/O that every *later*
+#   laboratory's measured wall time shares — so one miner's leak would degrade everyone else's score.
+#   That means the host needs real headroom above the cap, not swap.
+#
+#   OpenRouter spend. The dominant validator cost, and it is not hardware. Twenty problems a day at
+#   four candidates each, plus the discrimination probe, plus eight judge panels across the
+#   tournament. Budget it deliberately; the validator caps its own per-round RCC so a generation loop
+#   cannot spend a balance overnight, but the cap is an emergency brake rather than a budget.
+
+version: "AIL-3.0"
+
+compute_spec:
+  miner:
+    # A miner does not run a neuron. The laboratory is a container the *validator* executes, so
+    # nothing here needs to stay online — this is what it takes to build and test a bundle locally.
+    cpu:
+      min_cores: 4
+      min_speed: 2.5          # GHz
+    gpu:
+      required: false
+      # No GPU anywhere in this subnet. Every model call goes through OpenRouter (3.4.1), so a
+      # laboratory needs network and a budget rather than silicon.
+    memory:
+      min_ram: 8              # GB
+    storage:
+      min_space: 40           # GB — container images dominate
+    network:
+      min_download_speed: 50  # Mbps
+      min_upload_speed: 20    # Mbps, for publishing the sealed bundle
+
+  validator:
+    cpu:
+      min_cores: 8
+      recommended_cores: 16
+      min_speed: 3.0
+      # One laboratory container at a time receives 2048 CPU shares; the validator's own threads
+      # share the rest. Eight is the floor at which the sandbox does not starve them.
+    gpu:
+      required: false
+    memory:
+      min_ram: 16             # GB
+      recommended_ram: 32
+      # 8 GB is the laboratory cap and swap is off, so the host needs genuine headroom above it.
+    storage:
+      min_space: 100          # GB
+      recommended_space: 250
+      # Every registered miner ships one container image, and the validator pulls all of them.
+    network:
+      min_download_speed: 100
+      min_upload_speed: 50
+      # Outbound HTTPS to OpenRouter and to a subtensor endpoint. **No inbound.** Nothing in this
+      # subnet serves a public port to miners: submissions arrive on chain.
+
+  os:
+    supported:
+      - Ubuntu 22.04
+      - Ubuntu 24.04
+    notes: >
+      Docker is required on a validator — laboratories run as sibling containers, and the validator
+      needs the daemon socket. The sandbox network must be an internal bridge; see
+      ops/docker-compose.yml, whose topology is the egress control and is asserted by
+      tests/unit/test_ops_topology.py.
+
+  external_services:
+    openrouter:
+      required_for: [validator, miner]
+      notes: >
+        Two separate accounts, never one. A miner spends its own key on research; a validator spends
+        its own on generation, critique, judging and prior art. Under a single provider surface a
+        swapped key succeeds silently, so the separation is enforced in code (3.4.4) and reconciled
+        against per-account provider usage.
+    redis:
+      required_for: [validator]
+      notes: >
+        Holds the day's challenge pack and the round state a restart must recover. Must not be
+        reachable from the sandbox network: a laboratory that could reach it could read every problem
+        in the pack, including ones it has not been given.

@@ -1,0 +1,100 @@
+# Every gate the repository has, on every push and pull request.
+#
+# The README says "make gates is what CI runs", and this is what makes that true rather than
+# aspirational. The gates are listed individually rather than as one `make gates` step for one
+# reason: when a build fails, the failing step's name should say which property broke. "make gates
+# failed" sends someone to read a log; "purity" tells them a scoring module grew a clock read.
+name: gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  # A second push supersedes the first. Nothing here is deploy-adjacent, so cancelling is free.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Create the environment
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python -e ".[dev,gateway,validator]"
+
+      # --- The three static gates. Each catches something no test can. ---
+
+      - name: lint
+        run: .venv/bin/ruff check .
+
+      - name: purity
+        # A clock, RNG or network import in a scoring module. No test can catch this: a process
+        # compared against itself agrees perfectly.
+        run: .venv/bin/python tools/check_purity.py
+
+      - name: schema
+        # Generated models drifting from the JSON Schemas. Drift is silent until a field is read.
+        run: .venv/bin/python tools/gen_models.py --check
+
+      - name: reachability
+        # A protocol rule that no production call path reaches. A test calling a guard directly
+        # passes either way, so this walks from the three process entry points instead.
+        run: .venv/bin/python tools/reachability.py
+
+      # --- The composition checks. Reachability proves a path exists; these prove it works. ---
+
+      - name: gateway --check
+        run: .venv/bin/python -m gateway --check
+
+      - name: validator --check
+        run: .venv/bin/python -m validator --check
+
+      - name: portal --check
+        run: .venv/bin/python -m portal --check
+
+      # --- The suite. ---
+
+      - name: determinism
+        # Five fixed hash seeds. One seed cannot show dict-order dependence.
+        run: |
+          for seed in 0 1 7 42 20260803; do
+            echo "::group::PYTHONHASHSEED=$seed"
+            PYTHONHASHSEED=$seed .venv/bin/python -m pytest -q -m determinism
+            echo "::endgroup::"
+          done
+
+      - name: tests
+        run: PYTHONHASHSEED=random .venv/bin/python -m pytest -q
+
+  images:
+    # Built but not pushed. The point is that the Dockerfiles still build — an image that stopped
+    # building would otherwise be discovered by an operator rather than by us.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: gateway image
+        run: docker build -f ops/Dockerfile.gateway -t auto-invent-gateway:ci .
+      - name: validator image
+        run: docker build -f ops/Dockerfile.validator -t auto-invent-validator:ci .
+      - name: the build context excludes credentials
+        # .dockerignore is the control; this is the check that it holds. A context containing .env
+        # puts a live provider key within reach of the daemon's cache and of any later COPY.
+        run: |
+          docker build -f ops/Dockerfile.gateway -t auto-invent-gateway:ci . 2>&1 | tee build.log
+          if docker run --rm --entrypoint sh auto-invent-gateway:ci -c 'ls -a / /app 2>/dev/null' \
+             | grep -qE '^\.env$|^secrets$'; then
+            echo "::error::a credential file reached the image"; exit 1
+          fi
