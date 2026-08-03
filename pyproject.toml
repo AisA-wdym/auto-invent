@@ -8,10 +8,10 @@ requires-python = ">=3.12"
 # crypto libraries determine what the chain sees and how bytes are signed; a minor
 # version bump can change wire behaviour without changing any code here.
 dependencies = [
-    "bittensor==10.5.0",
+    "bittensor==11.0.1",
     "async-substrate-interface==2.2.1",
     "cryptography==46.0.0",
-    "bittensor-drand==1.3.0",
+    "bittensor-drand==2.0.0",
     "cbor2==5.6.5",
     "pydantic==2.9.2",
     # Bradley-Terry fitting (architecture.md 18.3). numpy only, deliberately: the
@@ -21,6 +21,9 @@ dependencies = [
     "pyyaml==6.0.2",
     # architecture.md 7.5: the validator's challenge-pack store.
     "redis==5.2.1",
+    # The one provider surface (architecture.md 3.4.1). The OpenAI SDK speaks OpenRouter's
+    # API directly; OpenRouter-only fields travel in `extra_body`.
+    "openai==1.109.1",
 ]
 
 [project.optional-dependencies]
@@ -53,7 +56,16 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 # The flat layout architecture.md section 24 specifies, rather than a src/ package.
-packages = ["protocol", "registry", "gateway", "validator", "miner", "portal", "ops"]
+packages = [
+    "protocol",
+    "chain",
+    "registry",
+    "gateway",
+    "validator",
+    "miner",
+    "portal",
+    "ops",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -77,3 +89,9 @@ extend-exclude = ["protocol/models"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI's dependency injection *is* a call in an argument default. B008 exists to catch a
+# mutable default evaluated once at import; here that single evaluation is the framework's
+# contract, and rewriting it to satisfy the rule would mean hand-resolving dependencies.
+"gateway/api.py" = ["B008"]

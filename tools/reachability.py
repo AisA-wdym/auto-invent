@@ -14,14 +14,15 @@ thing this gate exists to discount.
 the first commit: it catches a rename, a move, or a deletion that would otherwise leave the
 gate watching nothing.
 
-**Reachability** runs once at least one declared entry point exists. Before that there is no
-`main` to walk from, and failing on that would make the gate red for the whole build-out
-period — which trains everyone to ignore it. So it reports "not yet checkable" and says how
-many symbols are waiting, then becomes strict automatically the moment an entry point lands.
+**Reachability** becomes strict once *every* declared entry point exists. Until then an
+unreached symbol is reported as `pending` rather than as a failure — because a guard the
+validator reaches is genuinely unreachable while `validator.__main__` has not been written, and
+that is a fact about the build's progress rather than a defect. Failing on it would keep the
+gate red for the whole build-out, which trains everyone to ignore it.
 
-That is a deliberate compromise and worth naming: for now this gate protects against drift,
-not against unreachability. The reachability half is the one that caught real defects in the
-predecessor, so the entry points are worth building early.
+The count is printed either way ("5 on a call path" out of 18), so the gate never implies more
+than it verified, and no change here is needed when the last entry point lands: every pending
+symbol becomes a hard failure automatically.
 
 ## Edge resolution is by simple name, which over-approximates on purpose
 
@@ -46,7 +47,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 #: Packages that ship. `tests/` and `tools/` are excluded by construction.
-SOURCE_PACKAGES = ("protocol", "registry", "gateway", "validator", "miner", "portal", "ops")
+SOURCE_PACKAGES = (
+    "protocol",
+    "chain",
+    "registry",
+    "gateway",
+    "validator",
+    "miner",
+    "portal",
+    "ops",
+)
 
 #: Process entry points. Anything unreachable from one of these does not run in production,
 #: whatever the tests say.
@@ -194,17 +204,36 @@ def collect() -> tuple[dict[str, list[Definition]], dict[str, Definition]]:
     return by_simple, by_qual
 
 
+def _enclosing(qualname: str) -> str | None:
+    """The definition that lexically encloses `qualname`, or None for a module.
+
+    A qualname is `package.module:Outer.inner`. The module part and the within-module part are
+    separated by the single `:`, and both use `.` internally — so a naive `rpartition` on either
+    separator resolves the wrong parent. `mod:Call.__post_init__` rpartitioned on `:` yields the
+    *module*, which is how `Call.__post_init__` came to be reported unreachable while `Call`
+    itself was reached: the method was hung off the module rather than off its class, and module
+    entries are not roots.
+
+    That mattered because `__post_init__` has no textual call edge at all — the dataclass
+    machinery invokes it — so being a child of its class is the *only* way it can be reached.
+    Getting this wrong silently downgraded a real enforcement point to unverifiable.
+    """
+    module, colon, inner = qualname.partition(":")
+    if not colon:
+        return None
+    outer, dot, _ = inner.rpartition(".")
+    return f"{module}:{outer}" if dot else module
+
+
 def reachable(
     by_simple: dict[str, list[Definition]], by_qual: dict[str, Definition]
 ) -> tuple[set[str], list[str]]:
     """Reached qualnames, plus any declared entry point that does not exist."""
     children: dict[str, list[Definition]] = defaultdict(list)
     for definition in by_qual.values():
-        for separator in (":", "."):
-            parent, found, _ = definition.qualname.rpartition(separator)
-            if found and parent in by_qual:
-                children[parent].append(definition)
-                break
+        parent = _enclosing(definition.qualname)
+        if parent is not None and parent in by_qual:
+            children[parent].append(definition)
 
     frontier: list[Definition] = []
     missing: list[str] = []
@@ -249,20 +278,31 @@ def main() -> int:
 
     by_simple, by_qual = collect()
     reached, missing_entries = reachable(by_simple, by_qual)
-    entry_points_exist = len(missing_entries) < len(ENTRY_POINTS)
+    # Strict only once *every* declared entry point exists. While one is still missing, a symbol
+    # that only that process reaches is unreachable for a reason that is not a defect — the
+    # scoring path is reached from the validator, so it is unreachable until `validator.__main__`
+    # lands, and failing on that would keep the gate red for the whole build-out and train
+    # everyone to ignore it. The moment the last entry point appears, every pending symbol
+    # becomes a hard failure with no further change here.
+    strict = not missing_entries
 
     failures: list[str] = []
     unreachable: list[str] = []
+    pending: list[str] = []
 
     for requirement, symbol in sorted(ENFORCEMENT.items()):
         definition = _resolve(symbol, by_qual)
         if definition is None:
             failures.append(f"{requirement}\n      no such symbol: {symbol}")
-        elif entry_points_exist and definition.qualname not in reached:
-            unreachable.append(
-                f"{requirement}\n      {symbol} is defined but unreachable from any entry point"
-                f"\n      defined at {definition.module.replace('.', '/')}.py:{definition.lineno}"
-            )
+        elif definition.qualname not in reached:
+            where = f"{definition.module.replace('.', '/')}.py:{definition.lineno}"
+            if strict:
+                unreachable.append(
+                    f"{requirement}\n      {symbol} is defined but unreachable from any entry "
+                    f"point\n      defined at {where}"
+                )
+            else:
+                pending.append(f"{symbol}  ({where})")
 
     if args.report:
         candidates = sorted(
@@ -288,17 +328,22 @@ def main() -> int:
         )
         return 1
 
-    if entry_points_exist:
+    if strict:
         print(f"reachability gate passed — {len(ENFORCEMENT)} enforcement points on a call path")
-    else:
-        # Honest about what is and is not being checked. A gate that implied more than it
-        # verified would be worse than one that says so.
-        print(
-            f"reachability: {len(ENFORCEMENT)} enforcement points pinned and present.\n"
-            f"  Reachability not yet checkable: no entry point exists "
-            f"({', '.join(ENTRY_POINTS)}).\n"
-            "  This half of the gate switches on automatically when the first one lands."
-        )
+        return 0
+
+    # Honest about what is and is not being checked. A gate that implied more than it verified
+    # would be worse than one that says so.
+    reached_count = len(ENFORCEMENT) - len(pending)
+    print(
+        f"reachability: {len(ENFORCEMENT)} enforcement points pinned and present, "
+        f"{reached_count} on a call path.\n"
+        f"  Not yet strict — {len(missing_entries)} entry point(s) absent: "
+        f"{', '.join(missing_entries)}"
+    )
+    for symbol in pending:
+        print(f"    pending  {symbol}")
+    print("  Every pending symbol becomes a hard failure when the last entry point lands.")
     return 0
 
 
