@@ -614,7 +614,7 @@ def artifact(tmp_path, *, manifest: dict, source: bytes = b"src", image: bytes =
     with tarfile.open(path, "w:gz") as tar:
         for name, payload in (
             ("manifest.json", json.dumps(manifest).encode()),
-            ("bundle.tar.gz", source),
+            ("source.tar.gz", source),
             ("image.tar", image),
         ):
             info = tarfile.TarInfo(name)
@@ -640,20 +640,30 @@ def test_the_commitment_binds_the_manifest_not_the_tarball_bytes(tmp_path):
     assert digest_object(manifest) != digest_bytes(path.read_bytes())
 
 
-def test_a_manifest_that_does_not_match_the_commitment_is_refused(tmp_path, monkeypatch):
-    """A miner who serves a different bundle than the one sealed before the deadline. The whole
-    point of 6.1, and the check the broken digest comparison was standing in for."""
-    from protocol.canonical import digest_object
+def test_the_archive_digest_is_what_reaches_the_fetcher(tmp_path, monkeypatch):
+    """The seam, pinned from the validator's side.
+
+    `bundle_digest` is the digest of the artifact archive's bytes, so it is what `fetch_and_verify`
+    must be given — and being given it is what makes the archive verified before it is opened. This
+    has been wrong in both directions and neither was caught, so the argument is asserted rather
+    than assumed.
+    """
+    from protocol.canonical import digest_bytes
     from validator import submissions
 
-    served = {"round_id": "2026-08-03", "container_digest": "sha256:" + "cd" * 32}
-    committed = digest_object({"round_id": "2026-08-03", "container_digest": "sha256:" + "ef" * 32})
-    path = artifact(tmp_path, manifest=served)
+    manifest = {"round_id": "2026-08-03", "container_digest": "sha256:" + "cd" * 32}
+    path = artifact(tmp_path, manifest=manifest)
+    committed = digest_bytes(path.read_bytes())
+    seen: dict[str, str] = {}
 
-    monkeypatch.setattr(submissions, "fetch", lambda url, *, into, limits: path)
+    def fake_fetch(url, *, expected_digest, into, limits):
+        seen["digest"] = expected_digest
+        raise ArtifactError("stop here; the digest is what this test is about")
+
+    monkeypatch.setattr(submissions, "fetch_and_verify", fake_fetch)
     chain = FakeChain(netuid=1)
     chain.advance(10)
-    with pytest.raises(ArtifactError, match="not the committed"):
+    with pytest.raises(ArtifactError):
         submissions._prepare_one(
             uid=7,
             hotkey="5F7",
@@ -667,12 +677,15 @@ def test_a_manifest_that_does_not_match_the_commitment_is_refused(tmp_path, monk
             workspace=tmp_path / "work",
             limits=None,
         )
+    # `SubmissionCommitment` stores the bare hex, so the comparison normalises — which is also why
+    # `fetch_and_verify` accepts either form rather than insisting on the prefix.
+    assert seen["digest"].removeprefix("sha256:") == committed.removeprefix("sha256:")
 
 
 def test_a_swapped_source_archive_is_refused(tmp_path, monkeypatch):
     """`source_archive_hash` is inside the manifest, so it is committed. Source swapped after
     sealing would be published under 6.3 as what ran, and it did not run."""
-    from protocol.canonical import digest_bytes, digest_object
+    from protocol.canonical import digest_bytes
     from validator import submissions
 
     manifest = {
@@ -681,7 +694,9 @@ def test_a_swapped_source_archive_is_refused(tmp_path, monkeypatch):
         "source_archive_hash": digest_bytes(b"the source that was sealed"),
     }
     path = artifact(tmp_path, manifest=manifest, source=b"different source")
-    monkeypatch.setattr(submissions, "fetch", lambda url, *, into, limits: path)
+    monkeypatch.setattr(
+        submissions, "fetch_and_verify", lambda url, *, expected_digest, into, limits: path
+    )
     chain = FakeChain(netuid=1)
     chain.advance(10)
     with pytest.raises(ArtifactError, match="source that was swapped after sealing"):
@@ -690,7 +705,7 @@ def test_a_swapped_source_archive_is_refused(tmp_path, monkeypatch):
             hotkey="5F7",
             commitment=SubmissionCommitment(
                 round_id="2026-08-03",
-                bundle_digest=digest_object(manifest),
+                bundle_digest=digest_bytes(path.read_bytes()),
                 capsule_digest=DIGEST,
                 artifact_url="https://example.test/b.tar.gz",
             ),

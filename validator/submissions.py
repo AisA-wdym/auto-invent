@@ -38,7 +38,13 @@ from typing import Any
 
 from chain.client import ChainClient, ChainError, SubnetView
 from protocol.commitments import SubmissionCommitment
-from validator.artifacts import ArtifactError, FetchLimits, fetch, load_image, unpack
+from validator.artifacts import (
+    ArtifactError,
+    FetchLimits,
+    fetch_and_verify,
+    load_image,
+    unpack,
+)
 
 __all__ = [
     "Prepared",
@@ -61,7 +67,7 @@ _log = logging.getLogger(__name__)
 MANIFEST_NAME = "manifest.json"
 IMAGE_NAME = "image.tar"
 #: The source archive `ail-miner seal` writes, hashed into the manifest as `source_archive_hash`.
-SOURCE_NAME = "bundle.tar.gz"
+SOURCE_NAME = "source.tar.gz"
 
 
 @dataclass(frozen=True, slots=True)
@@ -238,27 +244,35 @@ def _prepare_one(
 ) -> Prepared:
     """One submission, in the order the checks have to happen in.
 
-    ## What the commitment actually binds
+    ## What the commitment binds, and the seam that broke twice
 
-    `bundle_digest` is `digest_object(manifest)` — that is what `ail-miner submit` publishes. It is
-    **not** a hash of the artifact tarball, and an earlier version of this function compared it to
-    one: it passed the downloaded bytes to `fetch_and_verify(expected_digest=bundle_digest)`, which
-    could never match, so *every* submission was refused. Fail-closed, so nothing was exploitable —
-    and the subnet could not run a single laboratory.
+    `bundle_digest` is the digest of the **artifact archive's bytes**, which `ail-miner submit`
+    builds and publishes. The archive is verified before it is opened, so extraction never runs on
+    unverified bytes.
 
-    The chain of custody the commitment does establish runs through the manifest:
+    This seam has now failed in both directions, which is worth recording because both failures were
+    silent and each made the subnet unable to run a single laboratory:
 
-        commitment.bundle_digest  == digest_object(manifest)
-        manifest.source_archive_hash == digest of the source archive inside the artifact
-        manifest.container_digest  == the image that `docker load` reports
-        commitment.capsule_digest  == the credential envelope
+    * `seal` hashed the manifest object while the validator hashed the download — refused every
+      submission;
+    * then the validator was changed to hash the manifest, and `submit` was changed to hash the
+      archive — refused every submission again, in the opposite direction.
 
-    So the manifest is the hinge, and it lives inside the archive. That means the archive has to be
-    opened *before* anything is verified, which is the one ordering compromise here and the reason
-    extraction is hardened on its own terms — `filter="data"`, a byte cap, a member cap. Nothing
-    read out of the archive is *used* before the manifest digest matches.
+    Neither was caught by a test, because the end-to-end test built its archive by hand rather than
+    through the miner's commands. `tests/unit/test_miner_packaging.py` now runs the seam itself.
+
+    The hashes inside the manifest remain, as defence in depth rather than as the binding:
+
+        manifest.source_archive_hash == the source archive inside the artifact
+        manifest.container_digest    == the image `docker load` reports
+        commitment.capsule_digest    == the credential envelope
     """
-    archive = fetch(commitment.artifact_url, into=workspace, limits=limits)
+    archive = fetch_and_verify(
+        commitment.artifact_url,
+        expected_digest=commitment.bundle_digest,
+        into=workspace,
+        limits=limits,
+    )
     root = unpack(archive, into=workspace / "bundle", limits=limits)
 
     manifest_path = root / MANIFEST_NAME
@@ -274,17 +288,7 @@ def _prepare_one(
     if not isinstance(manifest, dict):
         raise ArtifactError(f"{MANIFEST_NAME} is a {type(manifest).__name__}, not an object")
 
-    from protocol.canonical import digest_bytes, digest_object, same_digest
-
-    # The hinge. Everything after this line is bytes the miner committed to before the deadline;
-    # everything before it is bytes a stranger served over HTTP.
-    observed = digest_object(manifest)
-    if not same_digest(observed, commitment.bundle_digest):
-        raise ArtifactError(
-            f"the manifest hashes to {observed}, not the committed {commitment.bundle_digest}. The "
-            "artifact served at this URL is not the one sealed before the deadline, which is "
-            "exactly what 6.1's commitment exists to detect."
-        )
+    from protocol.canonical import digest_bytes, same_digest
 
     if manifest.get("round_id") not in (round_id_of(commitment), None, ""):
         # A bundle sealed for another round. The digest matches because the miner committed these

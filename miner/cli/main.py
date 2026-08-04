@@ -561,6 +561,28 @@ def command_submit(args: argparse.Namespace) -> int:
         )
         return 1
 
+    # The round goes into the manifest here, from the same `--round` the commitment carries.
+    #
+    # It was not written anywhere. `ail-miner init` scaffolds `"round_id": "YYYY-MM-DD"`, `validate`
+    # passed it, `seal` kept it, and `submit --round 2026-08-04` set only the *commitment's* round —
+    # so the validator compared the two, found the placeholder, and refused with "the manifest is
+    # sealed for round 'YYYY-MM-DD'". Every bundle the documented commands produced was refused, and
+    # the miner's only clue was a value they were never asked to set.
+    #
+    # One source of truth rather than a check: asking a miner to keep two copies in step is asking
+    # for the mismatch. Written before `_pack` because the manifest is inside the archive whose
+    # bytes become `bundle_digest`.
+    try:
+        manifest_path = args.sealed / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        if manifest.get("round_id") != args.round:
+            manifest["round_id"] = args.round
+            manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+            print(f"manifest round_id set to {args.round}")
+    except (OSError, json.JSONDecodeError) as error:
+        print(f"cannot read {args.sealed / 'manifest.json'}: {error}", file=sys.stderr)
+        return 1
+
     # Built here rather than at seal time: the digest is over these bytes, and the capsule that is
     # inside them was filled after sealing. See `_pack`.
     archive_path = args.sealed / "bundle.tar.gz"

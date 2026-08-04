@@ -90,3 +90,80 @@ def test_a_missing_member_is_named_rather_than_shipped(tmp_path: Path) -> None:
     sealed = _sealed(tmp_path / "sealed", members=(MANIFEST_NAME, "credential_envelope.json"))
     with pytest.raises(SealError, match=IMAGE_NAME):
         _pack(sealed, tmp_path / "bundle.tar.gz")
+
+
+# --------------------------------------------------------------------------
+# The round the manifest claims, and the round the commitment claims
+# --------------------------------------------------------------------------
+
+
+def test_submit_writes_the_round_into_the_manifest(tmp_path, monkeypatch, capsys):
+    """`init` scaffolds `"round_id": "YYYY-MM-DD"`, `validate` passes it, `seal` keeps it, and
+    `submit --round` set only the *commitment's* round — so the validator compared the two, found
+    the placeholder, and refused. Every bundle the documented commands produced was refused, and the
+    miner's only clue was a value they were never asked to set.
+
+    One source of truth rather than a check: asking a miner to keep two copies in step is asking for
+    the mismatch.
+    """
+    import argparse
+    import importlib
+
+    cli = importlib.import_module("miner.cli.main")
+
+    sealed = tmp_path / "sealed"
+    sealed.mkdir()
+    (sealed / "manifest.json").write_text(json.dumps({"round_id": "YYYY-MM-DD", "bundle_id": "x"}))
+    (sealed / "credential_envelope.json").write_text(
+        json.dumps({"key_capsule": "ab", "capsule_digest": "sha256:" + "cd" * 32})
+    )
+    (sealed / "image.tar").write_bytes(b"img")
+
+    def fake_pack(sealed_dir, dest):
+        dest.write_bytes(b"artifact")
+        return "sha256:" + "ef" * 32
+
+    monkeypatch.setattr(cli, "_pack", fake_pack)
+    args = argparse.Namespace(
+        sealed=sealed,
+        round="2026-08-04",
+        url="https://example.test/a.tar.gz",
+        dry_run=True,
+        netuid=542,
+        wallet="w",
+        hotkey="h",
+        network="test",
+    )
+    assert cli.command_submit(args) == 0
+    written = json.loads((sealed / "manifest.json").read_text())
+    assert written["round_id"] == "2026-08-04"
+    assert "round_id set to 2026-08-04" in capsys.readouterr().out
+
+
+def test_a_manifest_already_on_the_right_round_is_left_alone(tmp_path, monkeypatch):
+    """Rewriting it every time would change the archive bytes, and therefore `bundle_digest`, for a
+    resubmission that changed nothing."""
+    import argparse
+    import importlib
+
+    cli = importlib.import_module("miner.cli.main")
+
+    sealed = tmp_path / "sealed"
+    sealed.mkdir()
+    body = {"round_id": "2026-08-04", "bundle_id": "x"}
+    (sealed / "manifest.json").write_text(json.dumps(body))
+    before = (sealed / "manifest.json").read_bytes()
+    (sealed / "credential_envelope.json").write_text(
+        json.dumps({"key_capsule": "ab", "capsule_digest": "sha256:" + "cd" * 32})
+    )
+    def fake_pack(sealed_dir, dest):
+        dest.write_bytes(b"artifact")
+        return "sha256:" + "ef" * 32
+
+    monkeypatch.setattr(cli, "_pack", fake_pack)
+    args = argparse.Namespace(
+        sealed=sealed, round="2026-08-04", url="https://example.test/a.tar.gz",
+        dry_run=True, netuid=542, wallet="w", hotkey="h", network="test",
+    )
+    assert cli.command_submit(args) == 0
+    assert (sealed / "manifest.json").read_bytes() == before

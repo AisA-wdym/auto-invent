@@ -17,7 +17,7 @@ import tarfile
 
 import pytest
 
-from validator.artifacts import ArtifactError, FetchLimits, fetch, unpack
+from validator.artifacts import ArtifactError, FetchLimits, fetch_and_verify, unpack
 
 pytestmark = pytest.mark.determinism
 
@@ -43,7 +43,7 @@ def test_only_https_is_fetched(url, tmp_path):
     """A plain HTTP body can be replaced in transit. The digest would catch it — but only after this
     process had downloaded and unarchived attacker-chosen bytes, which is the thing to avoid."""
     with pytest.raises(ArtifactError, match="only https is fetched"):
-        fetch(url, into=tmp_path)
+        fetch_and_verify(url, expected_digest=digest_of(b""), into=tmp_path)
 
 
 @pytest.mark.parametrize("host", ["localhost", "127.0.0.1"])
@@ -51,7 +51,8 @@ def test_a_url_resolving_to_this_host_is_refused(host, tmp_path):
     """`127.0.0.1` reaches the gateway, which holds both API keys, from a process that already holds
     them — so the ask is not "leak a key" but "make the validator fetch its own admin surface"."""
     with pytest.raises(ArtifactError, match="not a public address"):
-        fetch(f"https://{host}/bundle.tar.gz", into=tmp_path
+        fetch_and_verify(
+            f"https://{host}/bundle.tar.gz", expected_digest=digest_of(b""), into=tmp_path
         )
 
 
@@ -59,7 +60,10 @@ def test_the_cloud_metadata_address_is_refused(tmp_path):
     """169.254.169.254 answers unauthenticated HTTP with instance credentials on every major
     provider, and a miner chooses this hostname — so it is one DNS record away."""
     with pytest.raises(ArtifactError, match="not a public address"):
-        fetch("https://169.254.169.254/latest/meta-data/", into=tmp_path,
+        fetch_and_verify(
+            "https://169.254.169.254/latest/meta-data/",
+            expected_digest=digest_of(b""),
+            into=tmp_path,
         )
 
 
@@ -67,7 +71,8 @@ def test_a_private_range_is_refused(tmp_path):
     """10/8 and 192.168/16 reach the operator's own network, which the validator has no business
     fetching a miner's bundle from."""
     with pytest.raises(ArtifactError, match="not a public address"):
-        fetch("https://10.0.0.5/bundle.tar.gz", into=tmp_path
+        fetch_and_verify(
+            "https://10.0.0.5/bundle.tar.gz", expected_digest=digest_of(b""), into=tmp_path
         )
 
 
@@ -174,31 +179,36 @@ def test_a_download_lands_under_its_final_name(tmp_path, monkeypatch):
     transfer that failed mid-stream."""
     payload = b"a bundle" * 100
     _serve(monkeypatch, payload)
-    fetched = fetch("https://example.test/bundle.tar.gz", into=tmp_path)
+    fetched = fetch_and_verify(
+        "https://example.test/bundle.tar.gz", expected_digest=digest_of(payload), into=tmp_path
+    )
     assert fetched.name == "artifact.tar.gz"
     assert fetched.read_bytes() == payload
     assert not (tmp_path / "artifact.partial").exists()
 
 
-def test_fetch_takes_no_digest_because_the_artifact_has_none(tmp_path):
-    """The defect this replaced, held as a signature check.
+def test_the_archive_is_verified_before_it_is_opened():
+    """The property that came back when `ail-miner submit` started building the archive.
 
-    `bundle_digest` is `digest_object(manifest)` — a hash of an object *inside* the archive, not of
-    the archive. The old signature invited the caller to pass it as the archive's digest, which
-    could never match, so every submission was refused: fail-closed, and a subnet that could not run
-    one laboratory. What binds the artifact is checked in `validator/submissions.py`, after
-    unpacking, against the manifest.
+    This seam has failed in both directions — the miner hashing the manifest while the validator
+    hashed the download, then the reverse — so the signature is pinned. A `fetch` with no digest
+    parameter would mean extraction runs on bytes nothing has checked, which is the operation that
+    acts on the structure of what a stranger served.
     """
     import inspect
 
-    assert "expected_digest" not in inspect.signature(fetch).parameters
+    assert "expected_digest" in inspect.signature(fetch_and_verify).parameters
+
 
 
 def test_the_byte_cap_stops_the_transfer_rather_than_checking_afterwards(tmp_path, monkeypatch):
     """A response with no Content-Length would otherwise fill the disk before any size check ran."""
     _serve(monkeypatch, b"x" * 5_000)
     with pytest.raises(ArtifactError, match="exceeded 1000 bytes"):
-        fetch("https://example.test/bundle.tar.gz", into=tmp_path,
+        fetch_and_verify(
+            "https://example.test/bundle.tar.gz",
+            expected_digest=digest_of(b"x" * 5_000),
+            into=tmp_path,
             limits=FetchLimits(maximum_download_bytes=1_000),
         )
     assert not (tmp_path / "artifact.partial").exists()
@@ -207,7 +217,8 @@ def test_the_byte_cap_stops_the_transfer_rather_than_checking_afterwards(tmp_pat
 def test_a_non_200_is_a_refusal_rather_than_an_empty_bundle(tmp_path, monkeypatch):
     _serve(monkeypatch, b"", status=404)
     with pytest.raises(ArtifactError, match="HTTP 404"):
-        fetch("https://example.test/gone.tar.gz", into=tmp_path
+        fetch_and_verify(
+            "https://example.test/gone.tar.gz", expected_digest=digest_of(b""), into=tmp_path
         )
 
 
@@ -216,14 +227,18 @@ def test_a_redirect_to_a_private_address_is_refused(tmp_path, monkeypatch):
     bounce to a private one with the check having run only on the first."""
     _serve(monkeypatch, b"", status=302, location="https://127.0.0.1/bundle.tar.gz")
     with pytest.raises(ArtifactError, match="not a public address"):
-        fetch("https://example.test/bundle.tar.gz", into=tmp_path,
+        fetch_and_verify(
+            "https://example.test/bundle.tar.gz", expected_digest=digest_of(b""), into=tmp_path
         )
 
 
 def test_a_redirect_loop_is_capped(tmp_path, monkeypatch):
     _serve(monkeypatch, b"", status=302, location="https://example.test/again")
     with pytest.raises(ArtifactError, match="redirected more than"):
-        fetch("https://example.test/bundle.tar.gz", into=tmp_path,
+        fetch_and_verify(
+            "https://example.test/bundle.tar.gz",
+            expected_digest=digest_of(b""),
+            into=tmp_path,
             limits=FetchLimits(maximum_redirects=2),
         )
 
@@ -279,5 +294,6 @@ def test_the_fake_transport_does_not_skip_the_check_for_the_tests_that_need_it(t
     is in force by default, so a test that forgot to install the fake fails on the check rather than
     reaching the network."""
     with pytest.raises(ArtifactError, match="not a public address|cannot resolve"):
-        fetch("https://127.0.0.1/x.tar.gz", into=tmp_path
+        fetch_and_verify(
+            "https://127.0.0.1/x.tar.gz", expected_digest=digest_of(b""), into=tmp_path
         )

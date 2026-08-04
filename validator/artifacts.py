@@ -67,7 +67,7 @@ from protocol.canonical import same_digest
 __all__ = [
     "ArtifactError",
     "FetchLimits",
-    "fetch",
+    "fetch_and_verify",
     "load_image",
     "unpack",
 ]
@@ -102,6 +102,21 @@ class FetchLimits:
     maximum_redirects: int = 3
     #: The HTTP gateway used for `ipfs://`. Chosen by the validator, never by the miner.
     ipfs_gateway: str = "https://ipfs.io/ipfs/"
+
+
+def _looks_like_digest(value: str) -> bool:
+    """Whether this is a sha256 digest, in either the prefixed or bare form.
+
+    Both are accepted because both appear: the commitment carries `sha256:…` and some tooling emits
+    the bare hex. What is refused is anything that is neither, because a tag or a version string
+    would make the comparison below always fail and read as a tampered artifact.
+    """
+    candidate = value.removeprefix("sha256:")
+    return len(candidate) == 64 and all(char in "0123456789abcdef" for char in candidate.lower())
+
+
+def _same(left: str, right: str) -> bool:
+    return left.removeprefix("sha256:").lower() == right.removeprefix("sha256:").lower()
 
 
 def _resolved_addresses(host: str) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
@@ -153,36 +168,47 @@ def _target(url: str, limits: FetchLimits) -> str:
     return url
 
 
-def fetch(
+def fetch_and_verify(
     url: str,
     *,
+    expected_digest: str,
     into: Path,
     limits: FetchLimits | None = None,
 ) -> Path:
-    """Download `url` under every bound, and return the file.
+    """Download `url`, check it against `expected_digest`, and return the verified file.
 
-    ## Why there is no digest argument
+    ## The digest argument came back, and why that is the right answer
 
-    There was one, and it was the wrong check. The caller passed `commitment.bundle_digest`, which
-    is `digest_object(manifest)` — a hash of a JSON object *inside* the archive, not of the archive.
-    It could never match, so every submission was refused: fail-closed, and a subnet that could not
-    run one laboratory.
+    It was removed with an argument that was true at the time and is not any more, so both halves
+    are worth stating.
 
-    What actually binds the artifact is the manifest digest, and the manifest is inside the
-    archive. So the archive is opened before it is verified, and the ordering compromise is real.
-    What replaces "hash before opening" is:
+    The argument was: `bundle_digest` is `digest_object(manifest)`, a hash of an object *inside*
+    the archive, so it can never equal the archive's bytes — a digest parameter here would look like
+    the stronger guarantee while being unsatisfiable. That was correct about the code as it stood,
+    and correct that an unsatisfiable check is worse than an honest weaker one.
 
-    * this function's bounds — https only, no private address, a byte cap enforced while reading;
-    * `unpack`'s bounds — `filter="data"`, a member cap, an expansion cap;
-    * and the rule that **nothing read out of the archive is used before the manifest digest
-      matches**, which `validator/submissions.py` enforces at one line and documents at that line.
+    What changed is the miner side. `ail-miner submit` now *builds* the artifact archive and
+    publishes the digest of **its bytes**, because the credential capsule is filled after sealing
+    and the archive is not final until then. So the archive has a committed digest, and hashing it
+    here restores the property the weaker version gave up: **nothing is extracted before it is
+    verified.** That is stronger than verifying a manifest after unpacking, because extraction
+    is the operation acting on the structure of stranger-chosen bytes.
 
-    A digest parameter here would have looked like the stronger guarantee while being unsatisfiable,
-    which is worse than an honest weaker one.
+    The inner hashes stay as defence in depth — `source_archive_hash`, `container_digest`,
+    `capsule_digest` — but they are no longer the only binding.
+
+    The file only takes its final name once the digest matches, so a caller cannot be handed an
+    unverified artifact by a partial failure.
     """
     import httpx
 
     limits = limits or FetchLimits()
+    if not _looks_like_digest(expected_digest):
+        raise ArtifactError(
+            f"the committed digest {expected_digest!r} is not a sha256 digest. Without one there "
+            "is nothing to check the download against, and an unchecked download of miner-chosen "
+            "bytes is arbitrary code — so no request is made at all."
+        )
     target = _target(url, limits)
     into.mkdir(parents=True, exist_ok=True)
     partial = into / "artifact.partial"
@@ -228,25 +254,28 @@ def fetch(
                 f"{url} redirected more than {limits.maximum_redirects} times"
             )
 
-    fetched = into / "artifact.tar.gz"
-    partial.replace(fetched)
-    _log.info(
-        "fetched %s: %d bytes, sha256:%s (not itself committed; the manifest inside is)",
-        url,
-        written,
-        digest.hexdigest()[:16],
-    )
-    return fetched
+    observed = f"sha256:{digest.hexdigest()}"
+    if not _same(observed, expected_digest):
+        partial.unlink(missing_ok=True)
+        raise ArtifactError(
+            f"the artifact at {url} hashes to {observed}, not the committed {expected_digest}. It "
+            "is discarded unopened: this is exactly the case the commitment exists to catch, and "
+            "'nearly right' is not a category here."
+        )
+
+    verified = into / "artifact.tar.gz"
+    partial.replace(verified)
+    _log.info("artifact verified: %s (%d bytes) matches %s", url, written, expected_digest)
+    return verified
 
 
 def unpack(archive: Path, *, into: Path, limits: FetchLimits | None = None) -> Path:
     """Extract a verified archive, refusing anything that writes outside it.
 
-    The archive has *not* been verified at this point, and cannot have been: what binds it is the
-    manifest digest, and the manifest is inside it. So extraction is the first operation acting on
-    the structure of bytes a stranger served, and it defends itself rather than relying on a prior
-    check — `filter="data"`, a member cap, an expansion cap. The caller verifies the manifest digest
-    immediately after this returns and uses nothing before then.
+    Verified is a precondition again, and `fetch_and_verify` is what should produce this argument:
+    the archive's bytes are what the commitment binds, so there is no state in which the path exists
+    and its contents are unchecked. The bounds here — `filter="data"`, a member cap, an expansion
+    cap — are therefore defence in depth rather than the only defence.
     """
     limits = limits or FetchLimits()
     into.mkdir(parents=True, exist_ok=True)
