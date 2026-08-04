@@ -77,7 +77,9 @@ _log = logging.getLogger(__name__)
 CHECKS: Mapping[str, str] = {
     "ambiguity": (
         "Could two competent laboratories read this problem as asking for different things? Not "
-        "'is the prose imprecise' — could they disagree about what a valid answer even is?"
+        "'is the prose imprecise' — could they disagree about what a valid answer even is? Two "
+        "laboratories proposing different *mechanisms* for the same stated goal is the intended "
+        "outcome, not ambiguity; ambiguity is disagreeing about the goal."
     ),
     "internal_contradiction": (
         "Do any two constraints, or a constraint and the objective, make each other unsatisfiable?"
@@ -98,8 +100,11 @@ CHECKS: Mapping[str, str] = {
         "Does answering require building or measuring something physical?"
     ),
     "unevaluable_relevance": (
-        "Could a judge tell a relevant answer from an irrelevant one? A problem whose success "
-        "criteria cannot be stated cannot be scored."
+        "Reading two proposed mechanisms for this problem, could a judge tell which one is a "
+        "better answer to *it*? The fault is a problem so unmoored that any invention would look "
+        "equally on-topic. It is NOT the absence of a metric, a dataset or an evaluation harness: "
+        "these answers are proposals judged against each other, never measured against ground "
+        "truth, so a qualitative objective is normal and is not this fault."
     ),
     "resembles_recent": (
         "Does this closely resemble a well-known benchmark problem or a standard textbook "
@@ -112,9 +117,31 @@ You review candidate research problems for an autonomous invention benchmark. Yo
 this problem and you are not being asked to improve it — you decide whether it is fit to score \
 laboratories against.
 
-Be strict. A flawed problem that gets used is worse than a good problem that gets discarded: \
-every laboratory in the cohort is scored on it, and a problem that fails to discriminate turns \
-a whole day's ranking into noise. Rejecting costs one more generation call.
+## What an answer to one of these problems is
+
+A laboratory returns five ranked *invention proposals*: a mechanism, its nearest prior art and \
+what differs, the expected value, the assumptions and failure modes, a falsifiable prediction and \
+a cheapest kill test. It does not implement anything and it does not run a benchmark.
+
+Answers are then compared **against each other** by judge panels, on originality, value, \
+mechanistic plausibility, fit to the stated constraints, portfolio diversity, self-ranking, \
+falsifiability and cost. There is no ground truth, no reference answer and no metric harness — \
+the judges read two portfolios and say which is better on one criterion.
+
+So a problem does **not** need a task suite, a simulator, a dataset, an evaluation protocol or a \
+numeric success metric, and the absence of one is not a fault. Requiring them would reject every \
+problem this benchmark can pose. What a problem needs is a clearly bounded research question with \
+real constraints, on which two different laboratories could propose *materially different* \
+mechanisms and a reader could tell which proposal is better.
+
+Judge the faults below on that basis, and on nothing else.
+
+## How strict to be
+
+Reject a problem that carries one of the listed faults. Do not reject one merely because it is \
+open-ended, because the objective is qualitative, or because you would have scoped it \
+differently — open-endedness is what is being bought here, and a problem with one obvious answer \
+is the failure this benchmark actually has to avoid.
 
 Return one JSON object and nothing else.
 """
