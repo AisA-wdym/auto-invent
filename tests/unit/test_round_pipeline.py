@@ -27,8 +27,9 @@ from typing import Any
 
 import pytest
 
-from chain.client import Neuron, RegisteredCommitment, SubnetView
+from chain.client import FakeChain, Neuron, RegisteredCommitment, SubnetView
 from protocol.commitments import SubmissionCommitment
+from validator.artifacts import ArtifactError
 from validator.execution import Execution, RoundExecution, as_document, execute_round, from_document
 from validator.rounds import FunnelConfig, _criterion_inputs, _family_gap, _select_cohort
 from validator.sandbox.container import Limits
@@ -461,3 +462,138 @@ def test_the_scaffolds_own_manifest_is_readable_by_the_validator(tmp_path):
     (tmp_path / "model_manifest.json").write_text(scaffold()["model_manifest.json"])
     declared = declared_models(tmp_path)
     assert declared, "the scaffold a miner starts from declares nothing the validator can read"
+
+
+# --------------------------------------------------------------------------
+# 3.4.2: which credential the miner handed over
+# --------------------------------------------------------------------------
+
+
+def envelope_bundle(tmp_path, chain, *, kind: str, secret: bytes, cap: int = 25):
+    """A bundle root holding a sealed envelope, and the commitment that matches it."""
+    from protocol.canonical import digest_object
+
+    capsule = chain.seal(secret, reveal_at_block=1).hex()
+    capsule_digest = digest_object({"key_capsule": capsule, "nonce": "n"})
+    body = {
+        "provider": "openrouter",
+        "credential_kind": kind,
+        "declared_spend_cap_usd": cap,
+        "key_capsule": capsule,
+        "nonce": "n",
+        "capsule_digest": capsule_digest,
+    }
+    (tmp_path / "credential_envelope.json").write_text(json.dumps(body))
+    return capsule_digest
+
+
+def test_a_runtime_key_is_used_directly(tmp_path):
+    from validator.submissions import _open_credential
+
+    chain = FakeChain(netuid=1)
+    chain.advance(10)
+    digest = envelope_bundle(tmp_path, chain, kind="runtime", secret=b"sk-or-v1-runtime")
+    opened = _open_credential(tmp_path, commitment=_c(digest), chain=chain, uid=7)
+    assert opened.api_key == "sk-or-v1-runtime"
+    assert opened.minted_key_hash == ""
+
+
+def test_a_management_key_is_minted_into_a_capped_round_key(tmp_path, monkeypatch):
+    """The whole point: what reaches the gateway is a key bounded by the provider, not the
+    credential the miner owns."""
+    from validator import submissions
+    from validator.submissions import _open_credential
+
+    chain = FakeChain(netuid=1)
+    chain.advance(10)
+    digest = envelope_bundle(tmp_path, chain, kind="management", secret=b"sk-or-v1-mgmt", cap=25)
+
+    monkeypatch.setattr(submissions, "_CREDENTIAL_KINDS", frozenset({"runtime", "management"}))
+    import gateway.provisioning as provisioning
+
+    monkeypatch.setattr(provisioning, "is_management_key", lambda key: True)
+    monkeypatch.setattr(
+        provisioning,
+        "mint_round_key",
+        lambda key, *, name, limit_usd: provisioning.MintedKey(
+            secret="sk-or-v1-minted", key_hash="h" * 64, limit_usd=limit_usd, expires_at="Z"
+        ),
+    )
+    opened = _open_credential(tmp_path, commitment=_c(digest), chain=chain, uid=7)
+    assert opened.api_key == "sk-or-v1-minted"
+    assert opened.minted_key_hash == "h" * 64
+    assert opened.management_key == "sk-or-v1-mgmt"
+
+
+def test_declaring_management_and_supplying_a_runtime_key_is_refused(tmp_path, monkeypatch):
+    """Told once, at admission. The alternative is every inference call failing for a reason that
+    does not name the cause."""
+    import gateway.provisioning as provisioning
+    from validator.submissions import _open_credential
+
+    chain = FakeChain(netuid=1)
+    chain.advance(10)
+    digest = envelope_bundle(tmp_path, chain, kind="management", secret=b"sk-or-v1-runtime")
+    monkeypatch.setattr(provisioning, "is_management_key", lambda key: False)
+    with pytest.raises(ArtifactError, match="it is a runtime key"):
+        _open_credential(tmp_path, commitment=_c(digest), chain=chain, uid=7)
+
+
+def test_management_with_no_spend_cap_is_refused(tmp_path, monkeypatch):
+    """The cap becomes the minted key's hard limit and there is no safe value to guess."""
+    import gateway.provisioning as provisioning
+    from validator.submissions import _open_credential
+
+    chain = FakeChain(netuid=1)
+    chain.advance(10)
+    digest = envelope_bundle(tmp_path, chain, kind="management", secret=b"sk-or-v1-mgmt", cap=0)
+    monkeypatch.setattr(provisioning, "is_management_key", lambda key: True)
+    with pytest.raises(ArtifactError, match="positive declared_spend_cap_usd"):
+        _open_credential(tmp_path, commitment=_c(digest), chain=chain, uid=7)
+
+
+def test_an_unrecognised_credential_kind_is_refused_rather_than_defaulted(tmp_path):
+    """Guessing wrong means either an unminted management key that cannot make one call, or a
+    runtime key used with no provider-side cap."""
+    from validator.submissions import _open_credential
+
+    chain = FakeChain(netuid=1)
+    chain.advance(10)
+    digest = envelope_bundle(tmp_path, chain, kind="whatever", secret=b"k")
+    with pytest.raises(ArtifactError, match="credential_kind"):
+        _open_credential(tmp_path, commitment=_c(digest), chain=chain, uid=7)
+
+
+def test_only_minted_keys_are_revoked(monkeypatch, tmp_path):
+    """The cleanup path walks every laboratory, and one that supplied a runtime key has nothing to
+    revoke — calling the provider for it would be a request about a key we did not create."""
+    from validator import submissions
+
+    revoked: list[str] = []
+    monkeypatch.setattr(
+        "gateway.provisioning.revoke",
+        lambda key, key_hash: (revoked.append(key_hash), True)[1],
+    )
+    labs = [
+        Prepared(
+            uid=1, hotkey="5F1", bundle_digest=DIGEST, image_digest=DIGEST, manifest={},
+            api_key="k", declared_spend_cap_usd=0, root=tmp_path,
+        ),
+        Prepared(
+            uid=2, hotkey="5F2", bundle_digest=OTHER, image_digest=DIGEST, manifest={},
+            api_key="k", declared_spend_cap_usd=25, root=tmp_path,
+            minted_key_hash="h" * 64, management_key="mgmt",
+        ),
+    ]
+    assert submissions.revoke_minted(labs) == 1
+    assert revoked == ["h" * 64]
+
+
+def _c(capsule_digest: str):
+    """A commitment whose capsule digest matches an envelope built above."""
+    return SubmissionCommitment(
+        round_id="2026-08-03",
+        bundle_digest=DIGEST,
+        capsule_digest=capsule_digest,
+        artifact_url="https://example.test/b.tar.gz",
+    )

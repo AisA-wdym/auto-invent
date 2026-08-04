@@ -370,6 +370,17 @@ def command_seal(args: argparse.Namespace) -> int:
 
     envelope = {
         "provider": "openrouter",
+        # Which kind of credential you will put in `key_capsule`. Declared rather than sniffed,
+        # because the two are handled differently and the validator verifies the declaration before
+        # anything runs — a mismatch is refused by name instead of by every call failing.
+        #
+        #   "management" — a provisioning key. It *cannot spend*: the validator mints a runtime
+        #                  key capped at declared_spend_cap_usd, uses it, and deletes it.
+        #                  The minted key also expires on its own, so a validator that crashes
+        #                  before revoking still leaves nothing live for long.
+        #   "runtime"    — an ordinary sk-or-v1 key. It *is* spendable balance, bounded only
+        #                  by whatever cap you set on it. Provision a dedicated one per round.
+        "credential_kind": args.credential_kind,
         "declared_spend_cap_usd": args.spend_cap,
         # The key itself is not written here. `seal` deliberately does not read it: a command that
         # took a credential as an argument would put it in the shell history, and one that read it
@@ -385,9 +396,19 @@ def command_seal(args: argparse.Namespace) -> int:
     print(f"  source archive     {source_hash}")
     print(f"  archive            {archive_path} ({archive_path.stat().st_size} bytes)")
     print("\nThe credential envelope is a separate file and is never published (5.4.1, 6.3).")
-    print("Fill key_capsule with your timelock-encrypted OpenRouter key before submitting.")
-    print("\nProvision a dedicated, spend-capped key for the round — the RCG enforces the round")
-    print("ceiling regardless, but a capped key bounds what a validator defect can cost you.")
+    print(f"Fill key_capsule with your timelock-encrypted {args.credential_kind} key.")
+    if args.credential_kind == "management":
+        print("\nA management key cannot spend. The validator mints a runtime key capped at your")
+        print(f"${args.spend_cap} for the round, then deletes it — and it expires on its own")
+        print("if the validator never gets that far.")
+        print("Get one at openrouter.ai/settings/provisioning-keys.")
+        print("It can create and delete keys on your account, so fund that account for this only.")
+    else:
+        print("\nProvision a dedicated, spend-capped key for the round — the RCG enforces the")
+        print("round ceiling regardless, but a runtime key *is* spendable balance, so the cap you")
+        print("set on it is the only bound a validator defect runs into.")
+        print("Consider --credential-kind management instead: a management key cannot spend at")
+        print("all, and the per-round cap is then enforced by OpenRouter rather than only by us.")
     return 0
 
 
@@ -481,6 +502,15 @@ def _parser() -> argparse.ArgumentParser:
 
     seal = sub.add_parser("seal", help="build the sealed bundle and credential envelope")
     seal.add_argument("path", type=Path, nargs="?", default=Path("."))
+    seal.add_argument(
+        "--credential-kind",
+        choices=("management", "runtime"),
+        default="management",
+        help=(
+            "management: a provisioning key that cannot spend; the validator mints a capped, "
+            "expiring key per round. runtime: an ordinary key, which is spendable balance"
+        ),
+    )
     seal.add_argument("--out", type=Path, default=Path("sealed"))
     seal.add_argument(
         "--spend-cap",

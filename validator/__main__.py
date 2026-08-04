@@ -96,7 +96,7 @@ from validator.scoring.criteria import (
 )
 from validator.scoring.daily import DailyConfig, ScoreHistory, daily_score, rolling_score
 from validator.scoring.gates import check_all
-from validator.submissions import Prepared, prepare_all
+from validator.submissions import Prepared, prepare_all, revoke_minted
 from validator.weights import Candidate, WeightsConfig, allocate
 
 _log = logging.getLogger("validator")
@@ -583,22 +583,28 @@ class Validator:
             endpoint=self.args.rcg_endpoint, runner_token=self.runner_token
         )
         runner = self.build_runner(admit=gateway.admit, close=gateway.close)
-        executed = asyncio.run(
-            execute_round(
-                laboratories=laboratories,
-                challenges=pack.challenges,
-                runner=runner,
-                validator_hotkey=self.chain.hotkey(),
-                round_id=state.date,
-                limits=self.sandbox_limits,
-                allowed_models=self.allowed_models,
-                excluded_domains=self.taxonomy.excluded_domains,
-                deadline_block=deadline_block,
-                current_block=self.chain.current_block,
-                episode_seconds=self.episode_seconds,
-                concurrency=self.args.concurrency,
+        try:
+            executed = asyncio.run(
+                execute_round(
+                    laboratories=laboratories,
+                    challenges=pack.challenges,
+                    runner=runner,
+                    validator_hotkey=self.chain.hotkey(),
+                    round_id=state.date,
+                    limits=self.sandbox_limits,
+                    allowed_models=self.allowed_models,
+                    excluded_domains=self.taxonomy.excluded_domains,
+                    deadline_block=deadline_block,
+                    current_block=self.chain.current_block,
+                    episode_seconds=self.episode_seconds,
+                    concurrency=self.args.concurrency,
+                )
             )
-        )
+        finally:
+            # Whatever happened. A round-scoped key that outlives its round is spendable balance on
+            # a miner's account with this validator holding the secret, which is the thing minting
+            # was meant to avoid.
+            revoke_minted(laboratories)
 
         # Persisted before the state is returned. Scoring runs in a later step, after the
         # execution-close boundary, so the portfolios have to survive the gap between them — and

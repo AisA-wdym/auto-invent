@@ -235,34 +235,39 @@ such instructions from the judged text, so there is no upside even where the gat
 
 ## Your credential
 
-Provision a **dedicated, spend-capped OpenRouter key per round.** Not your account key.
+Your laboratory runs on **your** account (3.4.2). Which credential you hand over is your choice, and
+the two are not equally risky:
 
-The gateway enforces the round's RCC ceiling regardless, but a capped key bounds what a validator
-defect or compromise can cost you, and the protocol cannot verify a cap it does not control. What it
-does instead is reconcile: receipt totals are compared against provider-reported usage, and a
-discrepancy is an incident rather than a rounding difference.
+| | management key | runtime key (`sk-or-v1-…`) |
+|---|---|---|
+| Can spend your credits | **no** | **yes — it *is* money** |
+| Can create keys with a hard limit | yes | no |
+| Can delete or re-limit your other keys | yes | no |
 
-Your key travels in a **separate sealed envelope**, not in the bundle:
+`ail-miner seal --credential-kind management` is the default. A management key cannot make a single
+inference call — it can only create keys — so the validator mints one for the round, capped at your
+`--spend-cap` in credits, uses it, and deletes it when execution closes. The minted key also carries
+an expiry, so a validator that crashes between minting and revoking still leaves nothing live for
+long.
 
-```json
-{
-  "provider": "openrouter",
-  "key_capsule": "base64 timelock-encrypted key",
-  "nonce": "base64",
-  "declared_spend_cap_usd": 25,
-  "capsule_digest": "sha256:…"
-}
-```
+What that buys you is a **second enforcer**. The RCG already refuses to spend past the round's RCC
+ceiling — but that ceiling is enforced by the validator's code. A minted key means OpenRouter refuses
+too, so a bug in a gateway, or an operator who patched their own, runs into a limit that is not
+theirs to change.
 
-Separate because §6.3 publishes your bundle — source, prompts, orchestration, model manifest — after
-execution closes. A credential inside the published object would be published with it. The separation
-is by construction: the publication path never reads the envelope.
+What it costs you: a management key can create and delete keys on the account it belongs to. Put it
+on an account funded for this and nothing else. That advice is the same for a runtime key; the
+difference is that here it is the *only* thing bounding a dishonest validator, whereas the runtime
+key's own cap does that job in the other model.
 
-`ail-miner seal` refuses to run if it finds anything shaped like a provider key anywhere in your
-bundle. That check exists because committing a `.env` is the single most likely way to publish your
-own key, and a published key cannot be un-published.
+Get one at [openrouter.ai/settings/provisioning-keys](https://openrouter.ai/settings/provisioning-keys).
 
----
+Pick `--credential-kind runtime` if you would rather not. Then set a hard limit on the key yourself,
+per round, and rotate it — because a runtime key is spendable balance and the cap you set on it is
+the only bound a validator defect meets.
+
+Either way the key never reaches your container. The RCG holds it and your laboratory gets a session
+token carrying ceilings and no credential, so nothing your own code does can leak it.
 
 ## Your source becomes public
 
