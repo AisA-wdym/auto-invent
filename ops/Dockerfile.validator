@@ -6,8 +6,17 @@
 # sibling, and the only thing crossing back is a file in /output that is read with a bounded read.
 FROM python:3.12-slim
 
+# `docker-cli`, not `docker.io`. Debian splits the two: `docker.io` is the *daemon*
+# (dockerd, docker-proxy, docker-init) and the client is a separate package, so with
+# `--no-install-recommends` this image got a daemon it must never run and no `docker`
+# binary at all. Every round died at EXECUTE with "docker is not on PATH" — after the
+# salt and the pack hash were already committed, which is the one place a failure costs
+# a whole round.
+#
+# The client is also the correct dependency on the merits: the validator drives the
+# *host's* daemon through the mounted socket and has no business running one itself.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends docker.io ca-certificates \
+ && apt-get install -y --no-install-recommends docker-cli ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
