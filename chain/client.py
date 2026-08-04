@@ -60,6 +60,10 @@ __all__ = [
 
 _log = logging.getLogger(__name__)
 
+#: Bytes per commitment field. The pallet's `Data` enum is `Raw0`…`Raw128`, so 128 is the ceiling
+#: and `Raw129` does not exist. Named because a longer payload is split rather than refused.
+_COMMITMENT_FIELD_BYTES = 128
+
 
 class ChainError(RuntimeError):
     """The chain could not be reached, or refused what we asked."""
@@ -76,7 +80,14 @@ class Neuron:
     uid: int
     hotkey: str
     coldkey: str
-    stake_tao: float
+    #: Stake on *this subnet*, in alpha. Not TAO: under dTAO a subnet's stake is denominated in its
+    #: own alpha, and the SDK's `Balance.tao` raises `UnitMismatchError` rather than converting —
+    #: correctly, because converting needs a price quote and a stake figure silently valued at a
+    #: stale price is worse than one labelled in the unit it is actually in.
+    #:
+    #: It was `stake_tao` and read `.tao`, so *every* metagraph read raised on any real dTAO subnet.
+    #: Found reading subnet 542's own metagraph.
+    stake_alpha: float
     validator_permit: bool
     active: bool
 
@@ -403,27 +414,73 @@ class BittensorChain:
     def publish_commitment(self, payload: str) -> int:
         """Write a commitment through the Commitments pallet.
 
-        A raw call rather than an intent because bittensor 11 ships no commitment intent, and
-        `submit_call` is the documented path for a generated call. The payload is the compact
-        text from `protocol.commitments`, so nothing about its meaning lives here.
+        A raw call rather than an intent because bittensor 11 ships no commitment *write* intent —
+        `bt.Commitment` is the read type. The payload is the compact text from
+        `protocol.commitments`, so nothing about its meaning lives here.
+
+        ## Three things measured against the live pallet, each of which broke this
+
+        **`calls.CommitmentInfo` is `typing.Any`.** Constructing it raises `TypeError: Any cannot be
+        instantiated`. The parameter is only *annotated* as that type; the call is built from a
+        plain mapping and encoded by the runtime's own metadata.
+
+        **The variant is `Raw{n}`, sized.** There is no plain `Raw`: the pallet's `Data` enum runs
+        `Raw0`…`Raw128` and the variant name states the byte count. `Raw129` does not exist.
+
+        **The value is bytes, not hex.** Hex-encoding doubled the length, so a 32-byte field was
+        rejected as 64 bytes.
+
+        All three failed together, which is why nothing surfaced until a commitment was published
+        against a real chain: every miner submission, every salt commitment and every pack hash goes
+        through this method.
+
+        ## Why the payload is split
+
+        A commitment runs to about 240 bytes — a round id, two digests and an artifact URL — and one
+        field holds at most 128. So it is chunked, one `Raw{n}` field per chunk, and the pallet
+        keeps the fields in order. Split rather than shortened because every part is load
+        bearing: the digests bind the bundle and the URL is where it lives.
         """
-        bittensor = self._bt()
         client = self._connected()
+        raw = payload.encode()
+        size = _COMMITMENT_FIELD_BYTES
+        chunks = [raw[index : index + size] for index in range(0, len(raw), size)]
+        if not chunks:
+            raise ChainError("refusing to publish an empty commitment")
         try:
             from bittensor._generated import calls
 
-            info = calls.CommitmentInfo(fields=[{"Raw": payload.encode().hex()}])
-            call = calls.Commitments.set_commitment(netuid=self.netuid, info=info)
-            result = client.submit_call(call, self._signer())
+            call = calls.Commitments.set_commitment(
+                netuid=self.netuid,
+                info={"fields": [{f"Raw{len(chunk)}": chunk} for chunk in chunks]},
+            )
+            # Signed by the **hotkey**, not the coldkey. The pallet's origin check is against a
+            # registered neuron's hotkey: signing with the wallet (which signs with the coldkey)
+            # returns `success=False, "Account is not allowed to make commitments to the chain"`.
+            # A commitment *is* the hotkey's statement, so this is the right key on the merits
+            # too — but it was found by the chain refusing it, not by reading the pallet.
+            result = client.submit_call(call, self._signer().hotkey)
         except Exception as error:  # noqa: BLE001
             raise ChainError(
-                f"could not publish a {len(payload)}-byte commitment on netuid {self.netuid}: "
-                f"{error}"
+                f"could not publish a {len(raw)}-byte commitment on netuid {self.netuid}: "
+                f"{type(error).__name__}: {error}"
             ) from error
+        if not getattr(result, "success", True):
+            # `submit_call` reports failure in the result rather than raising, so a commitment the
+            # chain refused would otherwise be logged as published — and the round would proceed
+            # believing a hash was on chain that is not.
+            raise ChainError(
+                f"the chain refused the commitment on netuid {self.netuid}: "
+                f"{getattr(result, 'message', result)}"
+            )
         block = getattr(result, "block", None) or self.current_block()
-        _log.info("commitment published at block %d: %s", block, payload[:80])
-        del bittensor
-        return int(block)
+        _log.info(
+            "commitment published at block %d in %d field(s): %s",
+            block,
+            len(chunks),
+            payload[:80],
+        )
+        return block
 
     def submit_weights(self, uids: list[int], weights: list[int]) -> None:
         """Publish the weight vector.
@@ -498,7 +555,19 @@ class BittensorChain:
 
         client = self._connected()
         try:
-            block_seconds = float(client.block_time)
+            # `block_time` is a *method* on bittensor 11, not a property. `float(client.block_time)`
+            # raised `TypeError: float() argument must be ... not 'method'` — so sealing failed on
+            # every call and no miner could produce a credential capsule at all. Found by sealing
+            # one against the real chain. Called, and the result checked, because a `block_time`
+            # returning something unusable would otherwise produce a reveal round of zero: a
+            # capsule openable immediately, which is precisely what 6.2 forbids.
+            block_seconds = float(client.block_time())
+            if not block_seconds > 0:
+                raise ChainError(
+                    f"the chain reports a block time of {block_seconds}, so a reveal round cannot "
+                    "be derived. A zero would seal a payload that opens immediately, and 6.2 "
+                    "depends on a bundle not opening before the deadline."
+                )
             ahead = max(0, reveal_at_block - self.current_block())
         except ChainError:
             raise
@@ -567,7 +636,7 @@ def _project(
                 uid=int(entry.uid),
                 hotkey=str(entry.hotkey),
                 coldkey=str(getattr(entry, "coldkey", "")),
-                stake_tao=float(getattr(stake, "tao", 0.0) if stake is not None else 0.0),
+                stake_alpha=_alpha_of(stake),
                 validator_permit=bool(getattr(entry, "validator_permit", False)),
                 active=bool(getattr(entry, "active", True)),
             )
@@ -591,6 +660,27 @@ def _project(
         commitments=tuple(sorted(commitments, key=lambda entry: entry.uid)),
         owner_coldkey=owner_coldkey,
     )
+
+
+def _alpha_of(stake: Any) -> float:
+    """A stake balance as a float, in whatever unit the runtime denominates it.
+
+    `Balance.alpha` on a dTAO subnet, `Balance.tao` on a root or pre-dTAO one. Tried in that order
+    and neither is required, because this figure is a diagnostic here — it is not what decides
+    anything — and a metagraph read must not fail over it. What *did* fail over it was
+    `float(stake.tao)` on subnet alpha, which raises rather than converting.
+    """
+    if stake is None:
+        return 0.0
+    for unit in ("alpha", "tao"):
+        try:
+            return float(getattr(stake, unit))
+        except Exception:  # noqa: BLE001 - the SDK raises UnitMismatchError, and may change which
+            continue
+    try:
+        return float(stake)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _project_commitment(uid: int, commitment: Any) -> RegisteredCommitment:
@@ -649,7 +739,7 @@ class FakeChain:
             uid=len(self.neurons),
             hotkey=hotkey,
             coldkey=f"cold-{hotkey}",
-            stake_tao=stake,
+            stake_alpha=stake,
             validator_permit=validator,
             active=True,
         )

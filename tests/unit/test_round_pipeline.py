@@ -58,7 +58,7 @@ def view(entries):
         mechid=0,
         block=1_000,
         neurons=tuple(
-            Neuron(uid=uid, hotkey=f"5F{uid}", coldkey="c", stake_tao=1.0,
+            Neuron(uid=uid, hotkey=f"5F{uid}", coldkey="c", stake_alpha=1.0,
                    validator_permit=False, active=True)
             for uid, _ in entries
         ),
