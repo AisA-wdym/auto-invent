@@ -114,6 +114,28 @@ class SubnetView:
     block: int
     neurons: tuple[Neuron, ...]
     commitments: tuple[RegisteredCommitment, ...]
+    #: The subnet owner's coldkey, for 23's owner-eligibility rule. Carried on the snapshot
+    #: rather than fetched where it is used, so the owner and the neuron set are read at one
+    #: height — an owner coldkey read at a different block than the neurons it is compared against
+    #: would, on the block an owner transfers the subnet, exclude the wrong hotkeys.
+    #:
+    #: Empty when the runtime does not expose it. Empty means *no exclusion*, the permissive
+    #: direction, so `owner_linked_hotkeys` says so rather than returning a quietly empty set.
+    owner_coldkey: str = ""
+
+    def owner_linked_hotkeys(self) -> frozenset[str]:
+        """Every hotkey whose coldkey is the subnet owner's.
+
+        23: "owner-linked miner UIDs should be ineligible". By *coldkey*, not by hotkey: an owner
+        who wanted to self-mine would register a fresh hotkey rather than resubmit the one that owns
+        the subnet, and a hotkey-only comparison would catch nobody. The coldkey pays for a
+        registration and is therefore what links them.
+        """
+        if not self.owner_coldkey:
+            return frozenset()
+        return frozenset(
+            neuron.hotkey for neuron in self.neurons if neuron.coldkey == self.owner_coldkey
+        )
 
     def uid_of(self, hotkey: str) -> int | None:
         for neuron in self.neurons:
@@ -219,6 +241,8 @@ class BittensorChain:
     #: node that is briefly unreachable rather than briefly busy.
     submit_retries: int = 2
     _client: Any = field(default=None, repr=False)
+    #: Cached subnet owner coldkey; `None` until first read, `""` when the runtime hides it.
+    _owner: str | None = field(default=None, repr=False)
     _wallet: Any = field(default=None, repr=False)
 
     def _bt(self) -> Any:
@@ -273,6 +297,35 @@ class BittensorChain:
 
     def view_at(self, block: int) -> SubnetView:
         return self._view(block)
+
+    def _owner_coldkey(self) -> str:
+        """The subnet owner's coldkey, for 23's owner-eligibility rule.
+
+        Cached after the first successful read: it changes only when a subnet is transferred, and a
+        query per metagraph read would add a round trip to the hottest read the validator makes.
+
+        A runtime that does not expose it yields `""`, which means *no exclusion* — the permissive
+        direction. Logged at warning rather than raised, because refusing to run a round over a
+        missing storage item would take the subnet down over a control that is one of several, and
+        `prepare_all` says out loud when the exclusion is not in force.
+        """
+        if self._owner is not None:
+            return self._owner
+        try:
+            import bittensor as bt
+
+            value = self._connected().query(bt.storage.SubtensorModule.SubnetOwner, [self.netuid])
+            self._owner = str(value or "")
+        except Exception as error:  # noqa: BLE001 - the SDK raises a wide family here
+            _log.warning(
+                "cannot read the owner coldkey of netuid %d (%s): 23's owner-eligibility rule "
+                "cannot be applied this round, and an owner-linked laboratory would be scored like "
+                "any other.",
+                self.netuid,
+                error,
+            )
+            self._owner = ""
+        return self._owner
 
     def block_hash(self, block: int) -> bytes:
         """7.3's randomness, read from the chain rather than generated.
@@ -338,7 +391,12 @@ class BittensorChain:
                 f"could not read the metagraph for netuid {self.netuid}: {error}"
             ) from error
 
-        projected = _project(metagraph, netuid=self.netuid, mechid=self.mechid)
+        projected = _project(
+            metagraph,
+            netuid=self.netuid,
+            mechid=self.mechid,
+            owner_coldkey=self._owner_coldkey(),
+        )
         _assert_mechanism(metagraph, expected=self.mechid, netuid=self.netuid)
         return projected
 
@@ -490,7 +548,9 @@ def _assert_mechanism(metagraph: Any, *, expected: int, netuid: int) -> None:
         )
 
 
-def _project(metagraph: Any, *, netuid: int, mechid: int) -> SubnetView:
+def _project(
+    metagraph: Any, *, netuid: int, mechid: int, owner_coldkey: str = ""
+) -> SubnetView:
     """Reduce an SDK metagraph to `SubnetView`.
 
     Tolerant of missing attributes because this is the one place the SDK's shape reaches us, and
@@ -529,6 +589,7 @@ def _project(metagraph: Any, *, netuid: int, mechid: int) -> SubnetView:
         block=block,
         neurons=tuple(sorted(neurons, key=lambda neuron: neuron.uid)),
         commitments=tuple(sorted(commitments, key=lambda entry: entry.uid)),
+        owner_coldkey=owner_coldkey,
     )
 
 
@@ -574,6 +635,9 @@ class FakeChain:
     submitted: list[tuple[list[int], list[int], int]] = field(default_factory=list)
     fail_submit: bool = False
     fail_reads: bool = False
+    #: 23's owner-eligibility rule. Settable so a test can register an owner-linked miner and watch
+    #: it be excluded — the rule is unobservable against a fake that has no owner.
+    owner_coldkey: str = ""
 
     def advance(self, blocks: int = 1) -> int:
         self.history[self.block] = dict(self.live_commitments)
@@ -643,6 +707,7 @@ class FakeChain:
             block=block,
             neurons=tuple(self.neurons),
             commitments=tuple(sorted(registered, key=lambda entry: entry.uid)),
+            owner_coldkey=self.owner_coldkey,
         )
 
     def publish_commitment(self, payload: str) -> int:

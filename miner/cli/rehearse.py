@@ -47,6 +47,8 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
+from protocol.season import load_season
+
 __all__ = ["rehearse", "sample_challenges"]
 
 #: A challenge to rehearse against when the miner supplies none. Deliberately in the shape the
@@ -140,7 +142,7 @@ def _start_gateway(*, api_key: str, port: int, runner_secret: str) -> tuple[Any,
     from gateway.metering import PriceTable
     from gateway.tokens import TokenIssuer
 
-    season = json.loads(Path("config/season.example.json").read_text())
+    season = load_season(Path("config/season.example.json"))
     # The miner's key is admitted as a *miner* credential, and the validator slot holds the same
     # key. Not a shortcut: `CredentialSet` refuses to fund a miner purpose from the validator's
     # credential and vice versa, so a rehearsal with an empty validator slot could not be
@@ -197,7 +199,7 @@ def rehearse(
     json.loads(manifest_path.read_text())
 
     challenges = _load_challenges(challenges_path)[:limit]
-    season = json.loads(Path("config/season.example.json").read_text())
+    season = load_season(Path("config/season.example.json"))
     workspace = workspace or Path("var/rehearsal")
 
     runner_secret = secrets.token_hex(16)

@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -596,4 +597,219 @@ def _c(capsule_digest: str):
         bundle_digest=DIGEST,
         capsule_digest=capsule_digest,
         artifact_url="https://example.test/b.tar.gz",
+    )
+
+
+# --------------------------------------------------------------------------
+# 6.1: what the commitment actually binds
+# --------------------------------------------------------------------------
+
+
+def artifact(tmp_path, *, manifest: dict, source: bytes = b"src", image: bytes = b"img") -> Path:
+    """A real artifact tarball, the shape `ail-miner seal` produces."""
+    import io
+    import tarfile
+
+    path = tmp_path / "artifact.tar.gz"
+    with tarfile.open(path, "w:gz") as tar:
+        for name, payload in (
+            ("manifest.json", json.dumps(manifest).encode()),
+            ("bundle.tar.gz", source),
+            ("image.tar", image),
+        ):
+            info = tarfile.TarInfo(name)
+            info.size = len(payload)
+            tar.addfile(info, io.BytesIO(payload))
+    return path
+
+
+def test_the_commitment_binds_the_manifest_not_the_tarball_bytes(tmp_path):
+    """The defect that made the subnet unable to run one laboratory.
+
+    `ail-miner submit` publishes `digest_object(manifest)`. The validator was passing that to a
+    function that hashed the *downloaded archive*, which can never match — so every submission was
+    refused. Fail-closed, and completely broken.
+
+    This pins the actual relationship, and it pins it in the direction that would have caught the
+    bug: the artifact's own bytes hash to something else entirely, and that is fine.
+    """
+    from protocol.canonical import digest_bytes, digest_object
+
+    manifest = {"round_id": "2026-08-03", "container_digest": "sha256:" + "cd" * 32}
+    path = artifact(tmp_path, manifest=manifest)
+    assert digest_object(manifest) != digest_bytes(path.read_bytes())
+
+
+def test_a_manifest_that_does_not_match_the_commitment_is_refused(tmp_path, monkeypatch):
+    """A miner who serves a different bundle than the one sealed before the deadline. The whole
+    point of 6.1, and the check the broken digest comparison was standing in for."""
+    from protocol.canonical import digest_object
+    from validator import submissions
+
+    served = {"round_id": "2026-08-03", "container_digest": "sha256:" + "cd" * 32}
+    committed = digest_object({"round_id": "2026-08-03", "container_digest": "sha256:" + "ef" * 32})
+    path = artifact(tmp_path, manifest=served)
+
+    monkeypatch.setattr(submissions, "fetch", lambda url, *, into, limits: path)
+    chain = FakeChain(netuid=1)
+    chain.advance(10)
+    with pytest.raises(ArtifactError, match="not the committed"):
+        submissions._prepare_one(
+            uid=7,
+            hotkey="5F7",
+            commitment=SubmissionCommitment(
+                round_id="2026-08-03",
+                bundle_digest=committed,
+                capsule_digest=DIGEST,
+                artifact_url="https://example.test/b.tar.gz",
+            ),
+            chain=chain,
+            workspace=tmp_path / "work",
+            limits=None,
+        )
+
+
+def test_a_swapped_source_archive_is_refused(tmp_path, monkeypatch):
+    """`source_archive_hash` is inside the manifest, so it is committed. Source swapped after
+    sealing would be published under 6.3 as what ran, and it did not run."""
+    from protocol.canonical import digest_bytes, digest_object
+    from validator import submissions
+
+    manifest = {
+        "round_id": "2026-08-03",
+        "container_digest": "sha256:" + "cd" * 32,
+        "source_archive_hash": digest_bytes(b"the source that was sealed"),
+    }
+    path = artifact(tmp_path, manifest=manifest, source=b"different source")
+    monkeypatch.setattr(submissions, "fetch", lambda url, *, into, limits: path)
+    chain = FakeChain(netuid=1)
+    chain.advance(10)
+    with pytest.raises(ArtifactError, match="source that was swapped after sealing"):
+        submissions._prepare_one(
+            uid=7,
+            hotkey="5F7",
+            commitment=SubmissionCommitment(
+                round_id="2026-08-03",
+                bundle_digest=digest_object(manifest),
+                capsule_digest=DIGEST,
+                artifact_url="https://example.test/b.tar.gz",
+            ),
+            chain=chain,
+            workspace=tmp_path / "work",
+            limits=None,
+        )
+
+
+# --------------------------------------------------------------------------
+# 23: the owner may not compete
+# --------------------------------------------------------------------------
+
+
+def owner_view(*, owner_coldkey: str = "cold-5Fowner") -> SubnetView:
+    """A subnet where the owner and one ordinary miner have both submitted."""
+    neurons = (
+        Neuron(0, "5Fowner", "cold-5Fowner", 1.0, False, True),
+        Neuron(1, "5Fminer", "cold-5Fminer", 1.0, False, True),
+        Neuron(2, "5Fowner2", "cold-5Fowner", 1.0, False, True),
+    )
+    commitments = tuple(
+        RegisteredCommitment(
+            uid=uid,
+            hotkey=hotkey,
+            raw=SubmissionCommitment(
+                round_id="2026-08-03",
+                bundle_digest=digest,
+                capsule_digest=DIGEST,
+                artifact_url="https://example.test/b.tar.gz",
+            ).encode(),
+            block=100,
+        )
+        for uid, hotkey, digest in (
+            (0, "5Fowner", DIGEST),
+            (1, "5Fminer", OTHER),
+            (2, "5Fowner2", "sha256:" + "77" * 32),
+        )
+    )
+    return SubnetView(
+        netuid=1,
+        mechid=0,
+        block=200,
+        neurons=neurons,
+        commitments=commitments,
+        owner_coldkey=owner_coldkey,
+    )
+
+
+def test_an_owner_linked_hotkey_is_refused_by_name(tmp_path, monkeypatch):
+    """23's control, which was documented in the threat table and implemented nowhere.
+
+    The owner sets the qualification floor (through the reference laboratory) and the judge panels
+    (through the season config). An owner who also competes is grading their own entry.
+    """
+    from validator import submissions
+
+    monkeypatch.setattr(
+        submissions,
+        "_prepare_one",
+        lambda **kwargs: _fake_prepared(kwargs["uid"], kwargs["hotkey"]),
+    )
+    result = submissions.prepare_all(
+        owner_view(), round_id="2026-08-03", chain=FakeChain(netuid=1), workspace=tmp_path
+    )
+    assert [lab.hotkey for lab in result.ready] == ["5Fminer"]
+    refused = {entry.hotkey: entry.reason for entry in result.refused}
+    assert set(refused) == {"5Fowner", "5Fowner2"}
+    assert all("owner-linked" in reason for reason in refused.values())
+
+
+def test_the_link_is_by_coldkey_not_by_hotkey(tmp_path, monkeypatch):
+    """`5Fowner2` is a fresh hotkey on the owner's coldkey — exactly what an owner who wanted to
+    self-mine would register. A hotkey-only comparison catches nobody."""
+    from validator import submissions
+
+    monkeypatch.setattr(
+        submissions,
+        "_prepare_one",
+        lambda **kwargs: _fake_prepared(kwargs["uid"], kwargs["hotkey"]),
+    )
+    result = submissions.prepare_all(
+        owner_view(), round_id="2026-08-03", chain=FakeChain(netuid=1), workspace=tmp_path
+    )
+    assert "5Fowner2" not in [lab.hotkey for lab in result.ready]
+
+
+def test_an_unknown_owner_coldkey_admits_everyone_and_says_so(tmp_path, monkeypatch, caplog):
+    """A runtime that hides the storage item leaves the rule unenforced. That is the
+    permissive direction, so it is logged — a silently empty exclusion set looks exactly like "the
+    owner did not submit", and the difference is whether a control is running."""
+    import logging
+
+    from validator import submissions
+
+    monkeypatch.setattr(
+        submissions,
+        "_prepare_one",
+        lambda **kwargs: _fake_prepared(kwargs["uid"], kwargs["hotkey"]),
+    )
+    with caplog.at_level(logging.WARNING):
+        result = submissions.prepare_all(
+            owner_view(owner_coldkey=""),
+            round_id="2026-08-03",
+            chain=FakeChain(netuid=1),
+            workspace=tmp_path,
+        )
+    assert len(result.ready) == 3
+    assert "not in force" in caplog.text
+
+
+def _fake_prepared(uid: int, hotkey: str) -> Prepared:
+    return Prepared(
+        uid=uid,
+        hotkey=hotkey,
+        bundle_digest=DIGEST,
+        image_digest=DIGEST,
+        manifest={},
+        api_key="k",
+        declared_spend_cap_usd=25,
+        root=Path("/tmp"),
     )

@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import logging
 import os
 import secrets
@@ -48,6 +47,7 @@ from gateway.metering import Ledger, PriceTable
 from protocol.commitments import PackCommitment, SaltCommitment, verify_salt_timing
 from protocol.fixedpoint import apply_weights, assert_sums_to_one, quantile_ppm
 from protocol.receipts import Receipt, reconcile, verify_chain
+from protocol.season import SeasonError, load_season
 from protocol.seeds import daily_seed, salt_commitment, slot_assignments, verify_salt
 from validator.artifacts import FetchLimits
 from validator.challenge_factory.dedup import is_duplicate
@@ -934,9 +934,13 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        season = json.loads(args.season.read_text())
-    except (OSError, json.JSONDecodeError) as error:
-        print(f"cannot read the season config at {args.season}: {error}", file=sys.stderr)
+        season = load_season(args.season)
+    except SeasonError as error:
+        # Validated against the schema, not merely parsed. Reading and indexing meant a field the
+        # protocol does not know did nothing silently — `"netuid": 542` in the season config gave a
+        # validator running against netuid 0 — and a mistyped field raised at whichever line first
+        # read it, possibly hours into a round.
+        print(str(error), file=sys.stderr)
         return 2
 
     if args.check:

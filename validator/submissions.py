@@ -38,7 +38,7 @@ from typing import Any
 
 from chain.client import ChainClient, ChainError, SubnetView
 from protocol.commitments import SubmissionCommitment
-from validator.artifacts import ArtifactError, FetchLimits, fetch_and_verify, load_image, unpack
+from validator.artifacts import ArtifactError, FetchLimits, fetch, load_image, unpack
 
 __all__ = [
     "Prepared",
@@ -60,6 +60,8 @@ _log = logging.getLogger(__name__)
 #: validator error.
 MANIFEST_NAME = "manifest.json"
 IMAGE_NAME = "image.tar"
+#: The source archive `ail-miner seal` writes, hashed into the manifest as `source_archive_hash`.
+SOURCE_NAME = "bundle.tar.gz"
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,7 +161,34 @@ def prepare_all(
     duplicates: list[tuple[str, int]] = []
     kept_by_digest: dict[str, int] = {}
 
+    # 23: "owner-linked miner UIDs should be ineligible." The subnet owner sets the rules, chooses
+    # the reference laboratory that defines the qualification floor, and — through the season config
+    # — the judge panels that score everyone. An owner who also competes is grading their own entry.
+    #
+    # Linked by *coldkey*, because an owner self-mining would register a fresh hotkey rather than
+    # resubmit the one that owns the subnet.
+    owner_linked = view.owner_linked_hotkeys()
+    if not owner_linked and not view.owner_coldkey:
+        # Said out loud. A silently empty exclusion set looks exactly like "the owner did not
+        # submit", and the difference is whether a control is running.
+        _log.warning(
+            "the subnet owner's coldkey is unknown, so 23's owner-eligibility rule is not in force "
+            "this round: an owner-linked laboratory would be admitted and scored like any other."
+        )
+
     for uid, hotkey, commitment in sorted(submissions_for(view, round_id=round_id)):
+        if hotkey in owner_linked:
+            _log.warning("uid %d is owner-linked and is not eligible to compete (23)", uid)
+            refused.append(
+                Refused(
+                    uid,
+                    hotkey,
+                    "owner-linked: this hotkey's coldkey owns the subnet. The owner sets the "
+                    "qualification floor and the judge panels, so competing as well would be "
+                    "grading their own entry (23).",
+                )
+            )
+            continue
         first = kept_by_digest.get(commitment.bundle_digest)
         if first is not None:
             duplicates.append((commitment.bundle_digest, first))
@@ -207,13 +236,29 @@ def _prepare_one(
     workspace: Path,
     limits: FetchLimits,
 ) -> Prepared:
-    """One submission, in the order the checks have to happen in."""
-    archive = fetch_and_verify(
-        commitment.artifact_url,
-        expected_digest=commitment.bundle_digest,
-        into=workspace,
-        limits=limits,
-    )
+    """One submission, in the order the checks have to happen in.
+
+    ## What the commitment actually binds
+
+    `bundle_digest` is `digest_object(manifest)` — that is what `ail-miner submit` publishes. It is
+    **not** a hash of the artifact tarball, and an earlier version of this function compared it to
+    one: it passed the downloaded bytes to `fetch_and_verify(expected_digest=bundle_digest)`, which
+    could never match, so *every* submission was refused. Fail-closed, so nothing was exploitable —
+    and the subnet could not run a single laboratory.
+
+    The chain of custody the commitment does establish runs through the manifest:
+
+        commitment.bundle_digest  == digest_object(manifest)
+        manifest.source_archive_hash == digest of the source archive inside the artifact
+        manifest.container_digest  == the image that `docker load` reports
+        commitment.capsule_digest  == the credential envelope
+
+    So the manifest is the hinge, and it lives inside the archive. That means the archive has to be
+    opened *before* anything is verified, which is the one ordering compromise here and the reason
+    extraction is hardened on its own terms — `filter="data"`, a byte cap, a member cap. Nothing
+    read out of the archive is *used* before the manifest digest matches.
+    """
+    archive = fetch(commitment.artifact_url, into=workspace, limits=limits)
     root = unpack(archive, into=workspace / "bundle", limits=limits)
 
     manifest_path = root / MANIFEST_NAME
@@ -229,6 +274,18 @@ def _prepare_one(
     if not isinstance(manifest, dict):
         raise ArtifactError(f"{MANIFEST_NAME} is a {type(manifest).__name__}, not an object")
 
+    from protocol.canonical import digest_bytes, digest_object, same_digest
+
+    # The hinge. Everything after this line is bytes the miner committed to before the deadline;
+    # everything before it is bytes a stranger served over HTTP.
+    observed = digest_object(manifest)
+    if not same_digest(observed, commitment.bundle_digest):
+        raise ArtifactError(
+            f"the manifest hashes to {observed}, not the committed {commitment.bundle_digest}. The "
+            "artifact served at this URL is not the one sealed before the deadline, which is "
+            "exactly what 6.1's commitment exists to detect."
+        )
+
     if manifest.get("round_id") not in (round_id_of(commitment), None, ""):
         # A bundle sealed for another round. The digest matches because the miner committed these
         # bytes — they simply committed the wrong ones, and running them would test a laboratory
@@ -236,6 +293,25 @@ def _prepare_one(
         raise ArtifactError(
             f"the manifest is sealed for round {manifest.get('round_id')!r}, but the commitment is "
             f"for {round_id_of(commitment)!r}"
+        )
+
+    # The source archive, checked against the hash the manifest declares. Published under 6.3, so a
+    # source archive that is not the one hashed into the commitment would publish source nobody ran.
+    source = root / SOURCE_NAME
+    declared_source = str(manifest.get("source_archive_hash", ""))
+    if source.is_file():
+        actual_source = digest_bytes(source.read_bytes())
+        if not same_digest(actual_source, declared_source):
+            raise ArtifactError(
+                f"{SOURCE_NAME} hashes to {actual_source}, but the manifest declares "
+                f"{declared_source}. The manifest is committed on chain, so this is source that "
+                "was swapped after sealing — and 6.3 would publish it as what ran."
+            )
+    elif declared_source and not declared_source.endswith("FILLED_BY_AIL_MINER_SEAL"):
+        raise ArtifactError(
+            f"the manifest declares a source archive hash but the artifact contains no "
+            f"{SOURCE_NAME}. 6.3 publishes the source that ran; a submission that ships none "
+            "cannot be published or forked, which is half of what the disclosure is for."
         )
 
     image_digest = load_image(

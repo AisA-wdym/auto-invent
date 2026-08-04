@@ -1,0 +1,420 @@
+{
+  "protocol_version": "AIL-3.0",
+  "season_id": "s-2026-testnet",
+  "weights_version": 1,
+  "mechid": 0,
+  "sdk_pin": "10.5.0",
+  "taxonomy": {
+    "domains": [
+      "software_architecture",
+      "algorithms",
+      "ai_agent_architecture",
+      "memory_and_retrieval",
+      "distributed_coordination",
+      "digital_mechanism_design",
+      "data_and_model_pipelines",
+      "optimization_and_efficiency"
+    ],
+    "challenges_per_day": 8,
+    "stratification": {
+      "software_architecture": 2,
+      "algorithms": 2,
+      "ai_agent_architecture": 2,
+      "distributed_coordination": 1,
+      "memory_and_retrieval": 1
+    },
+    "excluded_domains": [
+      "clinical_or_medical_treatment",
+      "wet_lab_chemistry_or_biology",
+      "physical_engineering_requiring_measurement",
+      "legal_or_policy",
+      "weapons_malware_or_exploits",
+      "broad_artistic_ideation",
+      "long_horizon_real_world_outcomes"
+    ]
+  },
+  "resource_classes": [
+    {
+      "name": "standard",
+      "memory_bytes": 8589934592,
+      "cpu_shares": 2048,
+      "pids_limit": 512,
+      "workspace_bytes": 2147483648
+    }
+  ],
+  "challenge_generation": {
+    "protocol_version": "CPG-1.0",
+    "candidates_per_slot": 2,
+    "dedup_lookback_days": 90,
+    "duplicate_threshold_ppm": 850000,
+    "minimum_reference_spread_ppm": 120000,
+    "generators": [
+      {
+        "family": "gpt",
+        "provider": "openrouter",
+        "model_snapshot": "openai/gpt-5.2",
+        "slots": 4,
+        "critic_family": "gpt",
+        "model_slug": "openai/gpt-5.2"
+      },
+      {
+        "family": "claude",
+        "provider": "openrouter",
+        "model_snapshot": "anthropic/claude-sonnet-5",
+        "slots": 4,
+        "critic_family": "claude",
+        "model_slug": "anthropic/claude-sonnet-5"
+      }
+    ],
+    "store": {
+      "backend": "redis",
+      "sandbox_reachable": false,
+      "pack_ttl_days": 90
+    },
+    "minimum_degradation_gap_ppm": 100000,
+    "maximum_judge_instability_ppm": 150000,
+    "allow_unprobed_packs": true
+  },
+  "criterion_weights_ppm": {
+    "originality": 250000,
+    "value": 200000,
+    "mechanism": 150000,
+    "constraint_fit": 120000,
+    "diversity": 100000,
+    "self_selection": 80000,
+    "falsifiability": 70000,
+    "cost_reliability": 30000
+  },
+  "rank_weights_ppm": [
+    400000,
+    250000,
+    150000,
+    120000,
+    80000
+  ],
+  "scoring": {
+    "pairwise_weight_ppm": 750000,
+    "pointwise_weight_ppm": 250000,
+    "mechanism_floor_ppm": 400000,
+    "capped_on_weak_mechanism_ppm": 500000,
+    "daily_mean_weight_ppm": 700000,
+    "daily_q25_weight_ppm": 300000,
+    "rolling_short_days": 7,
+    "rolling_long_days": 30,
+    "rolling_short_weight_ppm": 600000,
+    "rolling_long_weight_ppm": 400000,
+    "minimum_days_for_median": 7
+  },
+  "funnel": {
+    "cohort_top": 4,
+    "cohort_random": 1,
+    "cohort_new": 1,
+    "swiss_rounds": 2,
+    "prior_art_ideas_per_portfolio": 2
+  },
+  "judging": {
+    "minimum_families": 3,
+    "family_cap_ppm": 400000,
+    "panels": [
+      {
+        "criterion": "originality",
+        "reliability_floor_ppm": 900000,
+        "judges": [
+          {
+            "family": "anthropic",
+            "provider": "openrouter",
+            "model_slug": "anthropic/claude-sonnet-5",
+            "model_snapshot": "anthropic/claude-sonnet-5"
+          },
+          {
+            "family": "openai",
+            "provider": "openrouter",
+            "model_slug": "openai/gpt-5.2",
+            "model_snapshot": "openai/gpt-5.2"
+          },
+          {
+            "family": "google",
+            "provider": "openrouter",
+            "model_slug": "google/gemini-2.5-pro",
+            "model_snapshot": "google/gemini-2.5-pro"
+          }
+        ]
+      },
+      {
+        "criterion": "value",
+        "reliability_floor_ppm": 850000,
+        "judges": [
+          {
+            "family": "anthropic",
+            "provider": "openrouter",
+            "model_slug": "anthropic/claude-sonnet-5",
+            "model_snapshot": "anthropic/claude-sonnet-5"
+          },
+          {
+            "family": "openai",
+            "provider": "openrouter",
+            "model_slug": "openai/gpt-5.2",
+            "model_snapshot": "openai/gpt-5.2"
+          },
+          {
+            "family": "google",
+            "provider": "openrouter",
+            "model_slug": "google/gemini-2.5-pro",
+            "model_snapshot": "google/gemini-2.5-pro"
+          }
+        ]
+      },
+      {
+        "criterion": "mechanism",
+        "reliability_floor_ppm": 900000,
+        "judges": [
+          {
+            "family": "anthropic",
+            "provider": "openrouter",
+            "model_slug": "anthropic/claude-sonnet-5",
+            "model_snapshot": "anthropic/claude-sonnet-5"
+          },
+          {
+            "family": "openai",
+            "provider": "openrouter",
+            "model_slug": "openai/gpt-5.2",
+            "model_snapshot": "openai/gpt-5.2"
+          },
+          {
+            "family": "google",
+            "provider": "openrouter",
+            "model_slug": "google/gemini-2.5-pro",
+            "model_snapshot": "google/gemini-2.5-pro"
+          }
+        ]
+      },
+      {
+        "criterion": "constraint_fit",
+        "reliability_floor_ppm": 880000,
+        "judges": [
+          {
+            "family": "anthropic",
+            "provider": "openrouter",
+            "model_slug": "anthropic/claude-sonnet-5",
+            "model_snapshot": "anthropic/claude-sonnet-5"
+          },
+          {
+            "family": "openai",
+            "provider": "openrouter",
+            "model_slug": "openai/gpt-5.2",
+            "model_snapshot": "openai/gpt-5.2"
+          },
+          {
+            "family": "google",
+            "provider": "openrouter",
+            "model_slug": "google/gemini-2.5-pro",
+            "model_snapshot": "google/gemini-2.5-pro"
+          }
+        ]
+      },
+      {
+        "criterion": "diversity",
+        "reliability_floor_ppm": 830000,
+        "judges": [
+          {
+            "family": "anthropic",
+            "provider": "openrouter",
+            "model_slug": "anthropic/claude-sonnet-5",
+            "model_snapshot": "anthropic/claude-sonnet-5"
+          },
+          {
+            "family": "openai",
+            "provider": "openrouter",
+            "model_slug": "openai/gpt-5.2",
+            "model_snapshot": "openai/gpt-5.2"
+          },
+          {
+            "family": "google",
+            "provider": "openrouter",
+            "model_slug": "google/gemini-2.5-pro",
+            "model_snapshot": "google/gemini-2.5-pro"
+          }
+        ]
+      },
+      {
+        "criterion": "self_selection",
+        "reliability_floor_ppm": 820000,
+        "judges": [
+          {
+            "family": "anthropic",
+            "provider": "openrouter",
+            "model_slug": "anthropic/claude-sonnet-5",
+            "model_snapshot": "anthropic/claude-sonnet-5"
+          },
+          {
+            "family": "openai",
+            "provider": "openrouter",
+            "model_slug": "openai/gpt-5.2",
+            "model_snapshot": "openai/gpt-5.2"
+          },
+          {
+            "family": "google",
+            "provider": "openrouter",
+            "model_slug": "google/gemini-2.5-pro",
+            "model_snapshot": "google/gemini-2.5-pro"
+          }
+        ]
+      },
+      {
+        "criterion": "falsifiability",
+        "reliability_floor_ppm": 850000,
+        "judges": [
+          {
+            "family": "anthropic",
+            "provider": "openrouter",
+            "model_slug": "anthropic/claude-sonnet-5",
+            "model_snapshot": "anthropic/claude-sonnet-5"
+          },
+          {
+            "family": "openai",
+            "provider": "openrouter",
+            "model_slug": "openai/gpt-5.2",
+            "model_snapshot": "openai/gpt-5.2"
+          },
+          {
+            "family": "google",
+            "provider": "openrouter",
+            "model_slug": "google/gemini-2.5-pro",
+            "model_snapshot": "google/gemini-2.5-pro"
+          }
+        ]
+      },
+      {
+        "criterion": "cost_reliability",
+        "reliability_floor_ppm": 800000,
+        "judges": [
+          {
+            "family": "anthropic",
+            "provider": "openrouter",
+            "model_slug": "anthropic/claude-sonnet-5",
+            "model_snapshot": "anthropic/claude-sonnet-5"
+          },
+          {
+            "family": "openai",
+            "provider": "openrouter",
+            "model_slug": "openai/gpt-5.2",
+            "model_snapshot": "openai/gpt-5.2"
+          },
+          {
+            "family": "google",
+            "provider": "openrouter",
+            "model_slug": "google/gemini-2.5-pro",
+            "model_snapshot": "google/gemini-2.5-pro"
+          }
+        ]
+      }
+    ],
+    "degradation_accuracy_floor_ppm": 950000,
+    "order_swap_inconsistency_ceiling_ppm": 75000,
+    "schema_validity_floor_ppm": 990000,
+    "circuit_breaker_consecutive_failures": 3
+  },
+  "weight_allocation": {
+    "temperature_ppm": 100000,
+    "maximum_weight_ppm": 175000,
+    "minimum_valid_challenges": 3,
+    "burn_uid": 0,
+    "reference_floor_lab": "template_sonnet"
+  },
+  "cycle": {
+    "blocks_per_day": 7200,
+    "submission_close_offset": -600,
+    "salt_commit_offset": -450,
+    "randomness_offset": -300,
+    "pack_commit_offset": -100,
+    "reveal_offset": 0,
+    "execution_close_offset": 4200,
+    "weights_offset": 6900,
+    "anchor_block": 7704000,
+    "anchor_date": "2026-08-04"
+  },
+  "reference_labs": [
+    {
+      "name": "template_sonnet",
+      "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "model_slug": "anthropic/claude-sonnet-5",
+      "temperature_ppm": 700000,
+      "is_qualification_floor": true
+    },
+    {
+      "name": "template_gpt",
+      "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "model_slug": "openai/gpt-5.2",
+      "temperature_ppm": 700000,
+      "is_qualification_floor": false
+    },
+    {
+      "name": "template_gemini",
+      "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "model_slug": "google/gemini-2.5-pro",
+      "temperature_ppm": 700000,
+      "is_qualification_floor": false
+    },
+    {
+      "name": "template_sonnet_cold",
+      "container_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "model_slug": "anthropic/claude-sonnet-5",
+      "temperature_ppm": 100000,
+      "is_qualification_floor": false
+    }
+  ],
+  "providers": {
+    "surface": "openrouter",
+    "miner_pricing": {
+      "rcc_per_1k_in": 1000,
+      "rcc_per_1k_out": 5000,
+      "rcc_per_search": 5000,
+      "allowed_model_slugs": [
+        "anthropic/claude-sonnet-5",
+        "anthropic/claude-opus-4.1",
+        "openai/gpt-5.2",
+        "openai/gpt-5.1",
+        "google/gemini-2.5-pro",
+        "google/gemini-2.5-flash",
+        "deepseek/deepseek-v3.2",
+        "meta-llama/llama-4-maverick",
+        "qwen/qwen3-max",
+        "x-ai/grok-4"
+      ],
+      "maximum_rcc": 1000000,
+      "maximum_search_calls": 100,
+      "maximum_wall_time_seconds": 900
+    },
+    "validator_purposes": [
+      "challenge_generation",
+      "critique",
+      "judging",
+      "prior_art"
+    ]
+  },
+  "disclosure": {
+    "publish_after_execution_close": [
+      "challenge_pack",
+      "generation_protocol_version",
+      "miner_bundle_source",
+      "model_manifest",
+      "canonicalized_portfolios",
+      "raw_portfolios",
+      "prior_art_reports",
+      "judge_json",
+      "ab_order_results",
+      "challenge_scores",
+      "rolling_scores",
+      "rcg_receipts",
+      "hard_gate_outcomes",
+      "validator_weight_vector",
+      "bundle_lineage_and_forks"
+    ],
+    "judge_prompt_sealed_until_epoch_end": true
+  },
+  "signing": {
+    "registry_pubkey": "<operations public key>",
+    "owner_hotkey": "<owner hotkey address>",
+    "ineligible_uids": []
+  }
+}

@@ -14,7 +14,6 @@ second.
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 import secrets
@@ -25,6 +24,7 @@ from gateway.api import GatewayState, build_app
 from gateway.credentials import CredentialError, CredentialSet, load_validator_credential
 from gateway.metering import Ledger, PriceTable
 from gateway.tokens import TokenIssuer
+from protocol.season import SeasonError, load_season
 
 _log = logging.getLogger("gateway")
 
@@ -71,7 +71,13 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
     )
 
-    season = json.loads(args.season.read_text())
+    try:
+        season = load_season(args.season)
+    except SeasonError as error:
+        # The gateway and the validator read the same file, so they must agree about whether it is
+        # valid. Neither checking was worse than one of them checking.
+        print(str(error), file=sys.stderr)
+        return 2
 
     if args.check:
         # No credential is loaded and no socket is opened. What is checked is everything that
