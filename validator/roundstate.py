@@ -493,7 +493,7 @@ class PublicOnlyRedisStore:
 
         Keyed `{namespace}:public:{validator}:{date}`, not by date alone. 17.5 makes disagreement
         the *expected* state: every validator draws its own salt, generates its own twenty problems
-        and scores its own field, so "the round for 2026-08-04" is a different object per validator.
+        and scores its own field, so a round for one date is a different object per validator.
 
         A date-only key made them one object. Two validators publishing into one store overwrote
         each other, and a dashboard polling across the writes would flip between two validators'
@@ -525,9 +525,9 @@ class PublicOnlyRedisStore:
             json.dumps(document, sort_keys=True),
             ex=expiry,
         )
-        # The roster. A set rather than a scan over key names: a reader that had to parse hotkeys out
-        # of keys would need to know the key shape, which is the coupling this store exists to keep
-        # on one side of the boundary.
+        # The roster. A set rather than a scan over key names: a reader that parsed hotkeys out of
+        # keys would need to know the key shape, which is the coupling this store exists to keep on
+        # one side of the boundary.
         pipeline.sadd(f"{self.namespace}:validators", state.validator_hotkey)
         pipeline.expire(f"{self.namespace}:validators", expiry)
         pipeline.execute()
@@ -545,8 +545,8 @@ class PublicOnlyRedisStore:
         """This store's own document for a date, if this process wrote one.
 
         Needs a hotkey to be unambiguous and does not have one, so it answers for nothing. A
-        validator wanting its own document reads its private store, which is where recovery should
-        come from anyway. The dashboard reads by hotkey; see `dashboard/store.py`.
+        validator wanting its own document reads its private store, which is where recovery
+        should come from anyway. The dashboard reads by hotkey; see `dashboard/store.py`.
         """
         return None
 
