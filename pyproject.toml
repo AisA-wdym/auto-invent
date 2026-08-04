@@ -87,3 +87,5 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 # mutable default evaluated once at import; here that single evaluation is the framework's
 # contract, and rewriting it to satisfy the rule would mean hand-resolving dependencies.
 "gateway/api.py" = ["B008"]
+# Same reason: `Body`/`Header` in a default is how FastAPI declares a route's inputs.
+"demo/service.py" = ["B008"]
