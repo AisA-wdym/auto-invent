@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol, runtime_checkable
 
 from protocol.commitments import CommitmentError, decode
@@ -353,7 +353,12 @@ class BittensorChain:
                 "would derive different seeds from what is meant to be one shared value."
             )
         try:
-            digest = self._connected().get_block_hash(block)
+            # `block_info(n).hash`, not `get_block_hash(n)` — bittensor 11.0.1 has no such method,
+            # so this raised `AttributeError` and 7.3's randomness could never be read at all.
+            # Every round dies at GENERATE: the seed mixes this hash, so without it the pack cannot
+            # be derived from anything the validator committed to, and the day is lost after the
+            # salt commitment has already been published.
+            digest = self._connected().block_info(block).hash
         except Exception as error:  # noqa: BLE001 - the SDK raises a different type per transport
             raise ChainError(f"cannot read the hash of block {block}: {error}") from error
         if not isinstance(digest, str) or not digest.startswith("0x"):
@@ -409,7 +414,56 @@ class BittensorChain:
             owner_coldkey=self._owner_coldkey(),
         )
         _assert_mechanism(metagraph, expected=self.mechid, netuid=self.netuid)
-        return projected
+        if projected.commitments:
+            return projected
+        # The metagraph exposes `commitments` and `neuron.commitment`, and bittensor 11.0.1
+        # populates neither: both come back empty on a subnet that demonstrably has commitments in
+        # storage. `_project` then found none, `parsed_commitments()` returned none, and the
+        # validator concluded that no miner had submitted and that no peer had committed a salt. A
+        # round like that runs, scores nobody, and looks exactly like a quiet day.
+        #
+        # Read directly only when the metagraph yields nothing, so an SDK that starts populating
+        # the field keeps doing it in one round trip and this stays a fallback.
+        return replace(projected, commitments=self._commitments(source, projected))
+
+    def _commitments(self, source: Any, view: SubnetView) -> tuple[RegisteredCommitment, ...]:
+        """Every registered hotkey's commitment, read from the Commitments pallet.
+
+        One `query_map` over the netuid rather than a query per hotkey: a 256-neuron subnet would
+        otherwise be 256 round trips on every view, and `view()` is called at every round step.
+
+        A commitment from a hotkey that holds no uid is dropped. A commitment is evidence *by a
+        uid* — it is how a submission is attributed and paid — so one that cannot be resolved to a
+        uid has nobody to attribute it to.
+        """
+        from bittensor._generated import storage
+
+        try:
+            rows = list(source.query_map(storage.Commitments.CommitmentOf, [self.netuid]))
+        except Exception as error:  # noqa: BLE001 - the SDK raises a wide family here
+            raise ChainError(
+                f"could not read commitments for netuid {self.netuid}: {error}. Proceeding as "
+                "though there were none would score a round in which every submission was ignored."
+            ) from error
+
+        uid_of = {neuron.hotkey: neuron.uid for neuron in view.neurons}
+        commitments: list[RegisteredCommitment] = []
+        for hotkey, record in rows:
+            hotkey = str(hotkey)
+            uid = uid_of.get(hotkey)
+            if uid is None:
+                _log.debug("commitment from %s, which holds no uid on this subnet", hotkey[:12])
+                continue
+            raw = _commitment_text(record)
+            if not raw:
+                continue
+            commitments.append(
+                RegisteredCommitment(
+                    uid=uid, hotkey=hotkey, raw=raw, block=int((record or {}).get("block", 0) or 0)
+                )
+            )
+        _log.info("netuid %d: %d commitment(s) read", self.netuid, len(commitments))
+        return tuple(sorted(commitments, key=lambda entry: entry.uid))
 
     def publish_commitment(self, payload: str) -> int:
         """Write a commitment through the Commitments pallet.
@@ -681,6 +735,39 @@ def _alpha_of(stake: Any) -> float:
         return float(stake)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _commitment_text(record: Any) -> str:
+    """Rejoin a stored commitment's `Raw` fields into the text that was published.
+
+    The inverse of the chunking in `publish_commitment`. A payload longer than one field is stored
+    as several, in order, so they are concatenated before decoding — reading only the first would
+    silently truncate every commitment this subnet writes to its first 128 bytes, which for a
+    submission is the round id and half a digest.
+
+    A field that is not valid UTF-8, or a record shaped differently, yields `""` rather than
+    raising: other subnets and other protocol versions share this channel, and
+    `parsed_commitments` already drops what it cannot decode.
+    """
+    stored = ((record or {}).get("info") or {}).get("fields") or []
+    payload = bytearray()
+    for entry in stored:
+        if not isinstance(entry, dict):
+            continue
+        for name, value in entry.items():
+            if not str(name).startswith("Raw"):
+                continue
+            if isinstance(value, str):
+                try:
+                    payload.extend(bytes.fromhex(value.removeprefix("0x")))
+                except ValueError:
+                    return ""
+            elif isinstance(value, bytes | bytearray):
+                payload.extend(value)
+    try:
+        return payload.decode()
+    except UnicodeDecodeError:
+        return ""
 
 
 def _project_commitment(uid: int, commitment: Any) -> RegisteredCommitment:
