@@ -74,6 +74,17 @@ _log = logging.getLogger(__name__)
 #: prompt, so the critic is told what each check is for rather than only its name — a critic asked
 #: about "ambiguity" with no further guidance flags stylistic imprecision, which is not the
 #: property that matters.
+#: Output ceiling for one critique. The same correction `pointwise.py` and `pairwise.py` already
+#: carry: a reasoning model spends this budget *thinking* before it writes anything, so a ceiling
+#: sized for the answer alone truncates the reply mid-JSON.
+#:
+#: Measured live at 2,048 against `anthropic/claude-sonnet-5`: ~1,250 tokens of reasoning, then the
+#: JSON cut off. `parse_json` saw an empty string and `review` rejected the *candidate*. The log
+#: said "the model returned nothing at all", which reads as a provider outage rather than as our
+#: own ceiling — and 7.4's rejection counts, which 21 makes the operator's health signal, then
+#: blame the critic step for a truncation.
+_CRITIC_OUTPUT_TOKENS = 8_192
+
 CHECKS: Mapping[str, str] = {
     "ambiguity": (
         "Could two competent laboratories read this problem as asking for different things? Not "
@@ -221,7 +232,7 @@ async def review(client: ModelClient, candidate: Candidate) -> CriticVerdict:
                 checks=checks,
                 names=names,
             ),
-            max_tokens=2_048,
+            max_tokens=_CRITIC_OUTPUT_TOKENS,
         )
     except Exception as error:  # noqa: BLE001 - a critic failure is a rejection, not a crash
         _log.warning(

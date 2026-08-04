@@ -219,7 +219,11 @@ async def generate_for_slot(
             # Warmer than the 0.0 default. Candidate diversity within a slot is the point, and at
             # zero the variation prompts are the only source of difference.
             "temperature": 0.8,
-            "max_tokens": 4_096,
+            # The same reasoning-model allowance as the critic and the judges. A candidate is a
+            # large object — statement, objective, baseline, constraints, forbidden shortcuts —
+            # and at 4,096 the thinking left too little for it: the adapter was measured retrying
+            # on `Expecting value: line 145 column 1`, a JSON body that stopped mid-document.
+            "max_tokens": 12_288,
         }
         for attempt in range(config.candidates_per_slot)
     ]

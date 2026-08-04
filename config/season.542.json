@@ -44,7 +44,7 @@
   ],
   "challenge_generation": {
     "protocol_version": "CPG-1.0",
-    "candidates_per_slot": 2,
+    "candidates_per_slot": 4,
     "dedup_lookback_days": 90,
     "duplicate_threshold_ppm": 850000,
     "minimum_reference_spread_ppm": 120000,
