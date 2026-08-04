@@ -491,14 +491,14 @@ class PublicOnlyRedisStore:
 
         ## The key carries the validator, because two of them do not agree
 
-        Keyed `{namespace}:public:{validator}:{date}`, not by date alone. 17.5 makes disagreement the
-        *expected* state: every validator draws its own salt, generates its own twenty problems and
-        scores its own field, so "the round for 2026-08-04" is a different object per validator.
+        Keyed `{namespace}:public:{validator}:{date}`, not by date alone. 17.5 makes disagreement
+        the *expected* state: every validator draws its own salt, generates its own twenty problems
+        and scores its own field, so "the round for 2026-08-04" is a different object per validator.
 
-        A date-only key made them one object. Two validators publishing into one store overwrote each
-        other, and a dashboard polling across the writes would flip between two validators' views of
-        the same day — each internally consistent, the pair meaningless, and nothing anywhere
-        reporting a problem. Found when a second validator came up on subnet 542.
+        A date-only key made them one object. Two validators publishing into one store overwrote
+        each other, and a dashboard polling across the writes would flip between two validators'
+        views of the same day — each internally consistent, the pair meaningless, and nothing
+        anywhere reporting a problem. Found when a second validator came up on subnet 542.
 
         The private store keeps its date-only key: it holds one validator's own state and nothing
         else can write to it, so there is no collision to prevent there.
@@ -544,9 +544,9 @@ class PublicOnlyRedisStore:
     def read_public(self, date: str) -> dict[str, Any] | None:
         """This store's own document for a date, if this process wrote one.
 
-        Needs a hotkey to be unambiguous and does not have one, so it answers for *this* validator
-        only — which is all a validator would ever want from its own publish target. The dashboard
-        reads by hotkey; see `dashboard/store.py`.
+        Needs a hotkey to be unambiguous and does not have one, so it answers for nothing. A
+        validator wanting its own document reads its private store, which is where recovery should
+        come from anyway. The dashboard reads by hotkey; see `dashboard/store.py`.
         """
         return None
 
