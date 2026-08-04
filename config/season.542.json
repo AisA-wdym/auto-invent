@@ -15,13 +15,11 @@
       "data_and_model_pipelines",
       "optimization_and_efficiency"
     ],
-    "challenges_per_day": 8,
+    "challenges_per_day": 4,
     "stratification": {
-      "software_architecture": 2,
-      "algorithms": 2,
       "ai_agent_architecture": 2,
-      "distributed_coordination": 1,
-      "memory_and_retrieval": 1
+      "software_architecture": 1,
+      "algorithms": 1
     },
     "excluded_domains": [
       "clinical_or_medical_treatment",
@@ -53,7 +51,7 @@
         "family": "gpt",
         "provider": "openrouter",
         "model_snapshot": "openai/gpt-5.2",
-        "slots": 4,
+        "slots": 2,
         "critic_family": "gpt",
         "model_slug": "openai/gpt-5.2"
       },
@@ -61,7 +59,7 @@
         "family": "claude",
         "provider": "openrouter",
         "model_snapshot": "anthropic/claude-sonnet-5",
-        "slots": 4,
+        "slots": 2,
         "critic_family": "claude",
         "model_slug": "anthropic/claude-sonnet-5"
       }
@@ -328,8 +326,8 @@
     "randomness_offset": -15,
     "pack_commit_offset": -5,
     "reveal_offset": 0,
-    "execution_close_offset": 175,
-    "weights_offset": 290,
+    "execution_close_offset": 100,
+    "weights_offset": 280,
     "anchor_block": 7710300,
     "anchor_date": "2026-08-04"
   },
