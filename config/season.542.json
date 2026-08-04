@@ -322,15 +322,15 @@
     "reference_floor_lab": "template_sonnet"
   },
   "cycle": {
-    "blocks_per_day": 7200,
-    "submission_close_offset": -600,
-    "salt_commit_offset": -450,
-    "randomness_offset": -300,
-    "pack_commit_offset": -100,
+    "blocks_per_day": 300,
+    "submission_close_offset": -25,
+    "salt_commit_offset": -20,
+    "randomness_offset": -15,
+    "pack_commit_offset": -5,
     "reveal_offset": 0,
-    "execution_close_offset": 4200,
-    "weights_offset": 6900,
-    "anchor_block": 7704000,
+    "execution_close_offset": 175,
+    "weights_offset": 290,
+    "anchor_block": 7710300,
     "anchor_date": "2026-08-04"
   },
   "reference_labs": [

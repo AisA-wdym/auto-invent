@@ -523,3 +523,82 @@ def test_the_epoch_start_is_derived_from_the_chain_rather_than_the_clock():
     assert config.epoch_start(7_250) == 7_200
     assert config.epoch_start(7_199) == 0
     assert config.epoch_start(14_400) == 14_400
+
+
+# --------------------------------------------------------------------------
+# A round label has to be unique per epoch, whatever the epoch is worth
+# --------------------------------------------------------------------------
+
+
+def compressed(day: int = 300) -> CycleConfig:
+    """A testnet cycle where one epoch is an hour rather than a day."""
+    return CycleConfig(
+        blocks_per_day=day,
+        submission_close_offset=-25,
+        salt_commit_offset=-20,
+        randomness_offset=-15,
+        pack_commit_offset=-5,
+        reveal_offset=0,
+        execution_close_offset=175,
+        weights_offset=290,
+        anchor_block=7_710_000,
+        anchor_date="2026-08-04",
+    )
+
+
+def test_a_mainnet_season_still_labels_rounds_by_date():
+    """Unchanged, and that matters: a label is what a commitment carries and what every stored round
+    is keyed by, so moving it would orphan every round already published."""
+    config = cycle()  # anchor_block 0, anchor_date 2026-01-01
+    assert config.round_id(0) == "2026-01-01"
+    assert config.round_id(1) == "2026-01-02"
+
+
+def test_a_compressed_season_labels_every_epoch_distinctly():
+    """The defect that blocked a testnet round from ever completing.
+
+    With a 300-block epoch, twenty-four rounds fall on one calendar date. A date-only label gave all
+    of them the same id, so they collided in the commitment, in Redis and on the dashboard — and the
+    subnet could not run a round faster than a real day.
+    """
+    config = compressed()
+    base = config.anchor_block // 300
+    labels = [config.round_id(base + n) for n in range(24)]
+    assert len(set(labels)) == 24
+    assert labels[0] == "2026-08-04T00"
+    assert labels[23] == "2026-08-04T23"
+
+
+def test_compressed_labels_sort_chronologically():
+    """`recent()` and the dashboard's key scan both order by the label as a string, so a format that
+    sorted differently from time would silently reorder history."""
+    config = compressed()
+    base = config.anchor_block // 300
+    labels = [config.round_id(base + n) for n in range(30)]
+    assert sorted(labels) == labels
+
+
+def test_the_plausibility_check_works_on_a_compressed_label():
+    """It parsed the label with `date.fromisoformat`, which raises on `2026-08-04T00` — so the check
+    that exists to catch a wrong anchor was itself what would not start."""
+    from datetime import date as _date
+
+    config = compressed()
+    config.assert_anchor_is_plausible(block=7_710_000, now=_date(2026, 8, 4))
+
+
+def test_a_compressed_season_does_not_outrun_the_calendar_within_a_day():
+    """The failure this fixes end to end: labels advancing a day per epoch meant a validator that
+    started at noon refused to boot by mid-afternoon."""
+    from datetime import date as _date
+
+    config = compressed()
+    # Twenty epochs on — twenty hours, not twenty days.
+    config.assert_anchor_is_plausible(block=7_710_000 + 20 * 300, now=_date(2026, 8, 4))
+
+
+def test_the_granularity_follows_the_epoch_length_rather_than_a_flag():
+    """No configuration switch: an operator who set a fast cycle and forgot to flip a label mode
+    would get collisions, which is the failure being removed."""
+    assert "T" not in cycle().round_id(0)
+    assert "T" in compressed().round_id(compressed().anchor_block // 300)

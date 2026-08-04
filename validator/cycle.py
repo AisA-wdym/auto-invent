@@ -66,12 +66,17 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from enum import Enum
 
 __all__ = ["CycleConfig", "CycleError", "Phase"]
 
 _log = logging.getLogger(__name__)
+
+#: Nominal seconds per block. Read only to turn an epoch length into a round label; nothing that
+#: decides anything reads it, because every boundary here is a block height precisely so it does
+#: not depend on how fast blocks actually arrive.
+_BLOCK_SECONDS = 12.0
 
 
 class CycleError(ValueError):
@@ -281,15 +286,50 @@ class CycleConfig:
         ]
         return tuple(live)
 
-    def round_id(self, epoch_index: int) -> str:
-        """The round's label: an ISO date derived from the epoch index through the season anchor.
+    #: Blocks in a real calendar day at nominal block time. A season with this many or more labels
+    #: rounds by date; a shorter one labels by hour, because several of its epochs share a date
+    #: and a date-only label would collide.
+    CALENDAR_DAY_BLOCKS = 7_200
 
-        Derived rather than read from a clock, so two validators either side of midnight agree.
-        """
+    def epoch_seconds(self) -> float:
+        """Wall-clock time one epoch spans, at nominal block time."""
+        return self.blocks_per_day * _BLOCK_SECONDS
+
+    def round_moment(self, epoch_index: int) -> datetime:
+        """When a round begins. What the plausibility check compares against a clock."""
         anchor_index = self.anchor_block // self.blocks_per_day
-        return (
-            date.fromisoformat(self.anchor_date) + timedelta(days=epoch_index - anchor_index)
-        ).isoformat()
+        return datetime.fromisoformat(self.anchor_date).replace(tzinfo=UTC) + timedelta(
+            seconds=(epoch_index - anchor_index) * self.epoch_seconds()
+        )
+
+    def round_id(self, epoch_index: int) -> str:
+        """The round's label, derived from the epoch index through the season anchor.
+
+        `2026-08-04` on a mainnet season; `2026-08-04T20` on a compressed one. Both sort lexically
+        in chronological order, which `recent()` and the dashboard's key scan depend on.
+
+        ## Why the hour appears
+
+        The label was always a date, assuming one epoch is one calendar day. That holds for
+        `blocks_per_day = 7200` and breaks for any testnet wanting a round to finish in under a day:
+        with a 300-block epoch, twenty-four rounds fall on one date, every one computes the same id,
+        and they collide in the commitment, in Redis and on the dashboard.
+
+        Worse, `assert_anchor_is_plausible` compares the label to today and allows one day of
+        drift — so a compressed season starts, runs two hours, then refuses to boot because its
+        labels have outrun the calendar: a validator that works this afternoon and will not start
+        tomorrow.
+
+        So granularity follows the epoch length rather than being assumed. Nothing about the mainnet
+        label changes, which matters because a label is what a commitment carries and what every
+        stored round is keyed by.
+        """
+        moment = self.round_moment(epoch_index)
+        if self.blocks_per_day >= self.CALENDAR_DAY_BLOCKS:
+            return moment.date().isoformat()
+        # Hour granularity and no finer: an epoch under an hour would need minutes, and a cycle that
+        # short cannot fit a generation call, let alone an execution window.
+        return moment.strftime("%Y-%m-%dT%H")
 
     def assert_anchor_is_plausible(self, *, block: int, now: date) -> None:
         """Check the anchor against the calendar. Called from `--check`, not from construction.
@@ -301,11 +341,15 @@ class CycleConfig:
         Not called from `__post_init__` because it needs a clock and a chain height, and this module
         must be constructible from a config alone.
         """
-        derived = date.fromisoformat(self.round_id(self.epoch_index(block)))
-        drift = abs((derived - now).days)
+        # Compared as a moment, not a parsed label: a compressed season's label is not a date, and
+        # `date.fromisoformat` raised on it — so the check that exists to catch a wrong anchor was
+        # itself the thing that would not start.
+        derived = self.round_moment(self.epoch_index(block))
+        drift = abs((derived.date() - now).days)
         if drift > 1:
             raise CycleError(
-                f"the anchor puts block {block} in round {derived.isoformat()}, but today is "
+                f"the anchor puts block {block} in round "
+                f"{self.round_id(self.epoch_index(block))}, but today is "
                 f"{now.isoformat()} — {drift} days out. Every validator sharing this anchor "
                 "would agree with each other and disagree with the calendar. Fix "
                 "anchor_block/anchor_date in the season config: for this chain, anchor_block "
