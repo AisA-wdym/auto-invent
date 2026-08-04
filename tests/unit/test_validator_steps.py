@@ -128,10 +128,22 @@ def test_main_enters_the_loop_now_that_every_step_is_built(monkeypatch):
     which is the loop working, not the loop failing."""
 
     def fake_chain(**_kwargs):
-        # Advanced into the epoch the shipped anchor names, or the anchor check fails first.
+        # Advanced to the epoch whose label is *today*, derived from the anchor rather than assumed.
+        #
+        # This used to advance to `anchor + 1_000`, which was today's epoch on the day the anchor
+        # was written and drifts a day further from it every day after. Two days later the anchor
+        # check refused — correctly — and the test failed for a reason unrelated to the loop.
+        #
+        # A test that hardcodes a block height against a dated anchor expires. Computing the height
+        # from the same two numbers the anchor is built from cannot.
+        from datetime import date
+
+        cycle = SEASON["cycle"]
+        anchor_block = int(cycle["anchor_block"])
+        per_day = int(cycle["blocks_per_day"])
+        elapsed_days = (date.today() - date.fromisoformat(cycle["anchor_date"])).days
         chain = FakeChain(netuid=1)
-        anchor = int(SEASON["cycle"]["anchor_block"])
-        chain.advance(anchor + 1_000 - chain.current_block())
+        chain.advance(anchor_block + per_day * elapsed_days + 1_000 - chain.current_block())
         return chain
 
     monkeypatch.setattr("validator.__main__.BittensorChain", fake_chain)
