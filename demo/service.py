@@ -300,11 +300,17 @@ class DemoService:
             client = GatewayClient(
                 endpoint=self.config.rcg_endpoint, runner_token=self.config.runner_token
             )
+            # Two endpoints, and conflating them is a defect this repository has now had twice.
+            # `GatewayClient` runs in *this* process and reaches the gateway on localhost. The
+            # `rcg_endpoint` handed to `Runner` is written into the container's environment, and
+            # inside a container `127.0.0.1` is the container — so the laboratory gets the host's
+            # address on the sandbox bridge. The miner rehearsal harness hit this first; the
+            # symptom both times was `Connection refused` from inside the sandbox, two seconds in.
             runner = Runner(
                 sandbox=SandboxRunner(),
                 admit=client.admit,
                 close=client.close,
-                rcg_endpoint=self.config.rcg_endpoint,
+                rcg_endpoint=_bridge_endpoint(self.config.rcg_endpoint),
                 workspace=self.config.workspace,
             )
             deadline = int(time.time()) + int(
@@ -336,10 +342,20 @@ class DemoService:
             revoke(self.config.management_key, minted.key_hash)
 
         if result.portfolio is None:
+            # The container's own stderr is included. Without it this said "no portfolio" and
+            # nothing about *why* — which is the fault this codebase keeps finding elsewhere, and
+            # I shipped it here: a message that names the symptom and withholds the cause.
+            tail = (result.stderr_tail or "").strip().splitlines()
+            because = tail[-1][:300] if tail else "the container wrote nothing to stderr"
+            _log.error(
+                "demo run produced no portfolio in %.0fs (exit %s): %s",
+                result.wall_seconds,
+                result.exit_code,
+                because,
+            )
             raise DemoError(
                 "the laboratory did not return a readable portfolio: "
-                f"{result.failure or 'no output'}. That is a real outcome rather than an error on "
-                "your side — it is what a hard gate failure looks like in a round."
+                f"{result.failure or 'no output'}. The container said: {because}"
             )
         return {
             "challenge": {
@@ -367,6 +383,20 @@ class DemoService:
         from protocol.season import load_season
 
         return load_season(self.config.season)
+
+
+def _bridge_endpoint(local_endpoint: str) -> str:
+    """The gateway's address as a container on the sandbox bridge sees it.
+
+    The port is kept from the local endpoint and only the host is replaced, so an operator who moved
+    the gateway's port does not also have to know about this translation.
+    """
+    from urllib.parse import urlparse
+
+    from miner.cli.rehearse import _bridge_address
+
+    port = urlparse(local_endpoint).port or 8081
+    return f"http://{_bridge_address()}:{port}"
 
 
 def _image_digest(image: str) -> str:
