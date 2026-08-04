@@ -469,7 +469,14 @@ class PublicOnlyRedisStore:
     """
 
     url: str = "redis://127.0.0.1:6379/0"
-    namespace: str = "round"
+    #: Must match `RedisRoundStore.namespace`, because the dashboard reads one prefix and does not
+    #: know which kind of store wrote it. It defaulted to `"round"` here and the dashboard reads
+    #: `auto-invent:round:public:` — so the first live publish landed in a key nothing read, and the
+    #: page showed "waiting for the first round" while a document sat in Redis beside it.
+    #:
+    #: Same class of defect as the digest seam: two sides of a boundary, each internally consistent,
+    #: never run against each other. `tests/unit/test_roundstate.py` pins the literal the reader uses.
+    namespace: str = "auto-invent:round"
     _client: Any = field(default=None, repr=False)
 
     def _redis(self) -> Any:

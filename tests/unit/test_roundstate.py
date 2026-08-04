@@ -348,8 +348,8 @@ def test_the_publish_target_writes_only_the_gated_document():
     """
     client = FakeRedis()
     public_store(client).write(state(phase=Phase.EXECUTING.name))
-    assert list(client.keys) == ["round:public:2026-08-03"]
-    assert SECRET not in client.keys["round:public:2026-08-03"]
+    assert list(client.keys) == ["auto-invent:round:public:2026-08-03"]
+    assert SECRET not in client.keys["auto-invent:round:public:2026-08-03"]
 
 
 def test_the_publish_target_has_no_path_that_writes_the_full_document():
@@ -374,7 +374,7 @@ def test_publishing_a_disclosed_round_carries_the_problems():
     failure — 6.3 publishes everything once execution has closed."""
     client = FakeRedis()
     public_store(client).write(state(phase=Phase.DONE.name))
-    assert SECRET in client.keys["round:public:2026-08-03"]
+    assert SECRET in client.keys["auto-invent:round:public:2026-08-03"]
 
 
 def test_a_gate_that_failed_stops_the_publish_rather_than_leaking():
@@ -414,7 +414,7 @@ def test_the_fanout_reads_only_from_the_private_store():
     fanout.write(state(phase=Phase.EXECUTING.name))
 
     assert fanout.read("2026-08-03").challenges  # the private copy keeps the problems
-    assert list(client.keys) == ["round:public:2026-08-03"]
+    assert list(client.keys) == ["auto-invent:round:public:2026-08-03"]
 
 
 def test_a_publish_failure_does_not_fail_the_round():
@@ -430,3 +430,22 @@ def test_a_publish_failure_does_not_fail_the_round():
     fanout = FanoutRoundStore(primary=primary, publish=Broken(url="redis://unused"))
     fanout.write(state(phase=Phase.EXECUTING.name))
     assert primary.read("2026-08-03") is not None
+
+
+def test_the_publish_namespace_is_the_one_the_dashboard_reads():
+    """A cross-repository seam, pinned by its literal.
+
+    `auto-invent-dashboard/dashboard/store.py` reads `auto-invent:round:public:{date}`. This store
+    defaulted to `round`, so the first live publish landed in a key nothing read and the page showed
+    "waiting for the first round" with a document sitting in Redis beside it.
+
+    The literal is duplicated here on purpose: the dashboard is a separate repository and cannot be
+    imported, so the alternative to duplicating it is not checking it.
+    """
+    from validator.roundstate import PublicOnlyRedisStore, RedisRoundStore
+
+    assert PublicOnlyRedisStore.namespace == RedisRoundStore.namespace == "auto-invent:round"
+
+    client = FakeRedis()
+    public_store(client).write(state(phase=Phase.DONE.name))
+    assert list(client.keys) == ["auto-invent:round:public:2026-08-03"]
