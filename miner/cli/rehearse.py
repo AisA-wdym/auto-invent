@@ -129,6 +129,40 @@ def _load_challenges(path: Path | None) -> list[dict[str, Any]]:
     return [dict(entry) for entry in challenges]
 
 
+def _season_path() -> Path:
+    """Where the season config is, found relative to the installed package rather than the CWD.
+
+    `Path("config/season.example.json")` was CWD-relative, and the documented workflow is
+    `cd my-lab && ail-miner run .` — so the rehearsal could only ever start from the repository
+    root, and a miner who had `pip install`ed the tool had no `config/` directory at all. It
+    failed with `[Errno 2] No such file or directory`, which names the file and not the reason.
+
+    Resolved from `__file__` upward, because that is where the packaged copy lives however the
+    tool was installed. The CWD is still tried first so an operator can override the pricing table
+    by running from a tree with their own `config/` — a deliberate override, where the previous
+    behaviour was an accident.
+
+    Returns the path rather than the parsed body so `load_season` still does the reading and the
+    validating. The rehearsal must fail on a malformed season for the same reason the validator
+    does: it meters against the price table, and a season it cannot check is a rehearsal that
+    reports a cost the round will not reproduce.
+    """
+    candidates = (
+        Path("config/season.example.json"),
+        Path(__file__).resolve().parent.parent.parent / "config" / "season.example.json",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise RuntimeError(
+        "cannot find config/season.example.json, which supplies the RCC price table and the "
+        "container limits the rehearsal must match. Looked in "
+        + ", ".join(str(candidate) for candidate in candidates)
+        + ". Without it the rehearsal would meter differently from a real round, so it refuses "
+        "rather than guessing a price."
+    )
+
+
 def _start_gateway(*, api_key: str, port: int, runner_secret: str) -> tuple[Any, threading.Thread]:
     """A real gateway, in this process, on the miner's own key.
 
@@ -142,7 +176,7 @@ def _start_gateway(*, api_key: str, port: int, runner_secret: str) -> tuple[Any,
     from gateway.metering import PriceTable
     from gateway.tokens import TokenIssuer
 
-    season = load_season(Path("config/season.example.json"))
+    season = load_season(_season_path())
     # The miner's key is admitted as a *miner* credential, and the validator slot holds the same
     # key. Not a shortcut: `CredentialSet` refuses to fund a miner purpose from the validator's
     # credential and vice versa, so a rehearsal with an empty validator slot could not be
@@ -199,7 +233,7 @@ def rehearse(
     json.loads(manifest_path.read_text())
 
     challenges = _load_challenges(challenges_path)[:limit]
-    season = load_season(Path("config/season.example.json"))
+    season = load_season(_season_path())
     workspace = workspace or Path("var/rehearsal")
 
     runner_secret = secrets.token_hex(16)

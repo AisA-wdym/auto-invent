@@ -30,6 +30,7 @@ committing a `.env`.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import logging
 import re
@@ -38,7 +39,7 @@ import tarfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from protocol.canonical import digest_bytes, digest_object
+from protocol.canonical import digest_bytes
 from protocol.commitments import CommitmentError, SubmissionCommitment
 
 _log = logging.getLogger("ail-miner")
@@ -251,13 +252,125 @@ def _archive(root: Path, destination: Path) -> str:
         for path in root.rglob("*")
         if path.is_file() and not _SKIP & set(path.parts)
     )
-    with tarfile.open(destination, "w:gz", compresslevel=9) as archive:
+    # gzip stamps the current time into its header, so `tarfile.open(..., "w:gz")` produces
+    # different bytes on every run and the digest a miner committed could not be rebuilt.
+    # `mtime=0` removes the only non-deterministic field. Caught by the determinism test.
+    with (
+        destination.open("wb") as raw,
+        gzip.GzipFile(
+            # `filename=""` as well as `mtime=0`: given a fileobj, gzip otherwise copies
+            # `fileobj.name` into the header, so an archive written to a different path
+            # hashed differently while holding identical content.
+            filename="", fileobj=raw, mode="wb", compresslevel=9, mtime=0
+        ) as compressed,
+        tarfile.open(fileobj=compressed, mode="w") as archive,
+    ):
         for path in entries:
             info = archive.gettarinfo(path, arcname=str(path.relative_to(root)))
             info.mtime = 0
             info.uid = info.gid = 0
             info.uname = info.gname = ""
             info.mode = 0o644 if not path.is_dir() else 0o755
+            with path.open("rb") as handle:
+                archive.addfile(info, handle)
+    return digest_bytes(destination.read_bytes())
+
+
+class SealError(RuntimeError):
+    """The submission could not be packaged as the validator will expect to receive it."""
+
+
+#: The three names `validator.submissions` looks for in the unpacked archive. Named here rather
+#: than imported so the miner CLI does not depend on the validator package — but they are the same
+#: three strings, and a test asserts that they still are.
+ARCHIVE_MEMBERS = ("manifest.json", "credential_envelope.json", "image.tar")
+
+
+def _save_image(container_digest: str, destination: Path) -> str:
+    """`docker save` the image the manifest pins, and confirm it is the image that was pinned.
+
+    The validator loads this tar and checks what came out against `container_digest` (13.4). Saving
+    by digest rather than by tag is the same rule the runner enforces: a tag is mutable, and 6.1
+    fixes the container at the deadline.
+    """
+    import subprocess
+
+    if not container_digest.startswith("sha256:") or len(container_digest) != 71:
+        raise SealError(
+            f"container_digest is {container_digest!r}. It must be a full sha256 image digest — "
+            "`docker inspect <tag> --format '{{.Id}}'` prints one. A tag cannot be sealed: it is "
+            "mutable, so the bytes could change after the deadline."
+        )
+    try:
+        result = subprocess.run(
+            ["docker", "save", "-o", str(destination), container_digest],
+            capture_output=True,
+            text=True,
+            timeout=900,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise SealError(f"could not run `docker save`: {error}") from error
+    if result.returncode != 0:
+        raise SealError(
+            f"`docker save {container_digest}` failed: {result.stderr.strip()[:300]}. Build the "
+            "image first, and check the digest in manifest.json names the image you built."
+        )
+    return container_digest
+
+
+def _pack(sealed: Path, destination: Path) -> str:
+    """Build the artifact the validator downloads, and return the digest of its bytes.
+
+    ## Why this is at submit time and not at seal time
+
+    `bundle_digest` on the commitment is checked by `validator.artifacts.fetch_and_verify` against
+    the **bytes of the downloaded archive**. The credential envelope travels inside that archive,
+    and its capsule is filled by the miner *after* sealing — so the archive's bytes are not final
+    until then, and a digest computed at seal time could never match.
+
+    That was the defect. `seal` hashed the *manifest object* with `digest_object(manifest)` and
+    `submit` published that as `bundle_digest`, while the validator hashed the downloaded file.
+    The two can never agree, so every submission this CLI produced would have been refused at
+    `fetch_and_verify` with a digest mismatch — and nothing caught it, because the end-to-end test
+    builds its archive by hand rather than through these commands.
+
+    Deterministic in the same way `_archive` is: sorted names, zeroed mtimes, normalised ownership.
+    The digest goes on chain, so a miner must be able to rebuild the same bytes and get the same
+    answer.
+    """
+    members = [(name, sealed / name) for name in ARCHIVE_MEMBERS]
+    missing = [name for name, path in members if not path.is_file()]
+    if missing:
+        raise SealError(
+            f"{sealed} is missing {', '.join(missing)}. The validator unpacks the archive and "
+            "looks for exactly these, so an archive without them cannot be run. Re-run "
+            "`ail-miner seal`."
+        )
+    # The source archive rides along too: 6.3 publishes source after execution closes, and the
+    # validator keeps whatever it fetched. It is not required, so it is added only if sealed.
+    source = sealed / "source.tar.gz"
+    if source.is_file():
+        members.append(("source.tar.gz", source))
+
+    # gzip stamps the current time into its header, so `tarfile.open(..., "w:gz")` produces
+    # different bytes on every run and the digest a miner committed could not be rebuilt.
+    # `mtime=0` removes the only non-deterministic field. Caught by the determinism test.
+    with (
+        destination.open("wb") as raw,
+        gzip.GzipFile(
+            # `filename=""` as well as `mtime=0`: given a fileobj, gzip otherwise copies
+            # `fileobj.name` into the header, so an archive written to a different path
+            # hashed differently while holding identical content.
+            filename="", fileobj=raw, mode="wb", compresslevel=9, mtime=0
+        ) as compressed,
+        tarfile.open(fileobj=compressed, mode="w") as archive,
+    ):
+        for name, path in sorted(members):
+            info = archive.gettarinfo(path, arcname=name)
+            info.mtime = 0
+            info.uid = info.gid = 0
+            info.uname = info.gname = ""
+            info.mode = 0o644
             with path.open("rb") as handle:
                 archive.addfile(info, handle)
     return digest_bytes(destination.read_bytes())
@@ -360,13 +473,22 @@ def command_seal(args: argparse.Namespace) -> int:
 
     out: Path = args.out
     out.mkdir(parents=True, exist_ok=True)
-    archive_path = out / "bundle.tar.gz"
-    source_hash = _archive(args.path, archive_path)
+    source_path = out / "source.tar.gz"
+    source_hash = _archive(args.path, source_path)
 
     manifest = json.loads((args.path / "manifest.json").read_text())
     manifest["source_archive_hash"] = source_hash
-    bundle_digest = digest_object(manifest)
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True))
+
+    # The image, as bytes. `validator.submissions` looks for `image.tar` inside the fetched archive
+    # and `docker load`s it, because 6.1 fixes the container at the deadline and a *tag* the
+    # validator pulled at reveal could have been re-pointed after it. Nothing produced this file
+    # before, so no bundle this command wrote could ever be run.
+    try:
+        image_digest = _save_image(str(manifest.get("container_digest", "")), out / "image.tar")
+    except SealError as error:
+        print(f"cannot package the image: {error}", file=sys.stderr)
+        return 1
 
     envelope = {
         "provider": "openrouter",
@@ -389,14 +511,28 @@ def command_seal(args: argparse.Namespace) -> int:
         "nonce": "",
         "capsule_digest": "",
     }
-    (out / "credential_envelope.json").write_text(json.dumps(envelope, indent=2, sort_keys=True))
+    envelope_path = out / "credential_envelope.json"
+    if envelope_path.is_file() and not args.force:
+        # A re-seal would blank a capsule the miner has already filled, and the loss is silent:
+        # `submit` would refuse with "empty key_capsule" and the miner would refill it, not knowing
+        # the image or manifest beside it had also changed underneath.
+        print(
+            f"{envelope_path} already exists. Sealing again would blank a capsule you may have "
+            "already filled — pass --force to overwrite, or seal to a fresh --out.",
+            file=sys.stderr,
+        )
+        return 1
+    envelope_path.write_text(json.dumps(envelope, indent=2, sort_keys=True))
 
     print(f"sealed to {out}")
-    print(f"  bundle digest      {bundle_digest}")
+    print(f"  image              {image_digest}")
     print(f"  source archive     {source_hash}")
-    print(f"  archive            {archive_path} ({archive_path.stat().st_size} bytes)")
-    print("\nThe credential envelope is a separate file and is never published (5.4.1, 6.3).")
-    print(f"Fill key_capsule with your timelock-encrypted {args.credential_kind} key.")
+    print("\nThe credential envelope is never published (5.4.1, 6.3) — but it does travel inside")
+    print("the submitted archive, which is why `submit` builds that archive rather than `seal`:")
+    print("the bundle digest is over the archive's bytes, and those are not final until the")
+    print("capsule is in it.")
+    print(f"\nFill key_capsule in {envelope_path} with your timelock-encrypted "
+          f"{args.credential_kind} key, then run `ail-miner submit`.")
     if args.credential_kind == "management":
         print("\nA management key cannot spend. The validator mints a runtime key capped at your")
         print(f"${args.spend_cap} for the round, then deletes it — and it expires on its own")
@@ -414,7 +550,6 @@ def command_seal(args: argparse.Namespace) -> int:
 
 def command_submit(args: argparse.Namespace) -> int:
     """Publish the on-chain commitment (6.1 step 6)."""
-    manifest = json.loads((args.sealed / "manifest.json").read_text())
     envelope = json.loads((args.sealed / "credential_envelope.json").read_text())
 
     if not envelope.get("key_capsule"):
@@ -426,10 +561,19 @@ def command_submit(args: argparse.Namespace) -> int:
         )
         return 1
 
+    # Built here rather than at seal time: the digest is over these bytes, and the capsule that is
+    # inside them was filled after sealing. See `_pack`.
+    archive_path = args.sealed / "bundle.tar.gz"
+    try:
+        bundle_digest = _pack(args.sealed, archive_path)
+    except SealError as error:
+        print(f"cannot build the artifact: {error}", file=sys.stderr)
+        return 1
+
     try:
         commitment = SubmissionCommitment(
             round_id=args.round,
-            bundle_digest=digest_object(manifest),
+            bundle_digest=bundle_digest,
             capsule_digest=str(envelope.get("capsule_digest", "")),
             artifact_url=args.url,
         )
@@ -438,8 +582,12 @@ def command_submit(args: argparse.Namespace) -> int:
         return 1
 
     payload = commitment.encode()
+    print(f"artifact  {archive_path} ({archive_path.stat().st_size} bytes)")
+    print(f"digest    {bundle_digest}")
+    print(f"Publish that exact file at {args.url} — the validator downloads it and refuses any")
+    print("bytes that do not hash to the digest above.")
     if args.dry_run:
-        print(f"would publish ({len(payload.encode())} bytes):\n  {payload}")
+        print(f"\nwould publish ({len(payload.encode())} bytes):\n  {payload}")
         return 0
 
     from chain.client import BittensorChain, ChainError
