@@ -474,8 +474,8 @@ class PublicOnlyRedisStore:
     #: `auto-invent:round:public:` — so the first live publish landed in a key nothing read, and the
     #: page showed "waiting for the first round" while a document sat in Redis beside it.
     #:
-    #: Same class of defect as the digest seam: two sides of a boundary, each internally consistent,
-    #: never run against each other. `tests/unit/test_roundstate.py` pins the literal the reader uses.
+    #: Same class as the digest seam: two sides of a boundary, each internally consistent, never
+    #: run against each other. `tests/unit/test_roundstate.py` pins the literal the reader uses.
     namespace: str = "auto-invent:round"
     _client: Any = field(default=None, repr=False)
 
