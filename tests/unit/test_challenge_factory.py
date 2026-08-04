@@ -910,3 +910,59 @@ def test_the_season_declares_whether_unprobed_packs_are_allowed():
     function default where two validators could disagree."""
     assert SEASON["challenge_generation"]["allow_unprobed_packs"] is False
     assert CONFIG.allow_unprobed_packs is False
+
+
+# --------------------------------------------------------------------------
+# 2: context has to be *near* the trigger
+# --------------------------------------------------------------------------
+
+
+def test_an_ordinary_exploit_far_from_an_ordinary_payload_is_not_flagged():
+    """The false positive, from a real run.
+
+    A five-idea portfolio on fan-out read latency contained "no slack to exploit" and "the existing
+    request payload" — both entirely ordinary in distributed systems — about three thousand
+    characters apart in unrelated sentences. Document-level co-occurrence failed gate 13.12, which
+    is fatal, on an honest laboratory.
+    """
+    text = (
+        "If N equals R there is no slack to exploit. "
+        + "The coordinator batches deadline hints. " * 40
+        + "The deadline value travels inside the existing request payload."
+    )
+    assert screen({"problem_statement": text}).safe
+
+
+def test_an_exploit_beside_a_buffer_overflow_is_still_flagged():
+    """The fix must not have disarmed the rule. This is the phrase it was written for."""
+    verdict = screen(
+        {"problem_statement": "Exploit a buffer overflow in the parser to bypass the quorum."}
+    )
+    assert not verdict.safe
+    assert verdict.excluded_domain == "weapons_malware_or_exploits"
+
+
+def test_every_occurrence_is_examined_not_only_the_first():
+    """A portfolio that uses the word innocently first and dangerously later must be caught on the
+    later one — checking only the first match would let the innocent use provide cover."""
+    text = (
+        "We exploit locality of reference in the cache. "
+        + "Ordinary systems prose. " * 40
+        + "Then we exploit a remote code execution path in the replica."
+    )
+    assert not screen({"problem_statement": text}).safe
+
+
+def test_a_defensive_framing_must_be_near_the_term_it_excuses():
+    """The inverting direction. One paragraph about detection does not make a whole document
+    defensive, so the excuse has to be local to the term it excuses."""
+    near = screen({"problem_statement": "A classifier for malware detection in email attachments."})
+    far = screen(
+        {
+            "problem_statement": "Build malware for the payload stage. "
+            + "Unrelated prose. " * 60
+            + "Detection is a separate concern."
+        }
+    )
+    assert near.safe
+    assert not far.safe

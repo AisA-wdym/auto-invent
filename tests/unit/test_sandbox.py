@@ -8,6 +8,7 @@ the reason `docker_command` returns argv instead of executing it.
 from __future__ import annotations
 
 import json
+import pathlib
 
 import pytest
 
@@ -339,3 +340,45 @@ def test_the_derived_ceiling_scales_with_the_budget():
 def test_the_derived_ceiling_has_a_floor():
     """A tiny budget must still permit enough calls to attempt the challenge."""
     assert _request_ceiling({"resource_limits": {"maximum_rcc": 1}}) >= 50
+
+
+# --------------------------------------------------------------------------
+# Bind sources must be absolute
+# --------------------------------------------------------------------------
+
+
+def test_a_relative_bind_source_is_refused():
+    """Docker reads a relative bind source as a *volume name*, not a path.
+
+    So `-v var/runs/x:/input` means "the volume called var/runs/x" and the container fails to start
+    with `invalid volume specification`. The validator's own default workspace is a relative
+    `var/runs`, which means every container would have failed to start — found by running the miner
+    rehearsal harness, which builds its argv through this same function.
+    """
+    with pytest.raises(ContainerError, match="relative"):
+        docker_command(
+            image_digest="sha256:" + "ab" * 32,
+            container_name="lab",
+            network="net",
+            limits=Limits(1, 1, 1, 1, 60),
+            input_host_path=pathlib.Path("var/runs/x/input/challenge.json"),
+            output_host_path=pathlib.Path("/tmp/out"),
+            session_token="t",
+            rcg_endpoint="http://rcg",
+        )
+
+
+def test_a_relative_output_path_is_refused_too():
+    """Both sides, because a run that reads its challenge and cannot write its portfolio fails gate
+    13.1 as though the laboratory produced nothing."""
+    with pytest.raises(ContainerError, match="relative"):
+        docker_command(
+            image_digest="sha256:" + "ab" * 32,
+            container_name="lab",
+            network="net",
+            limits=Limits(1, 1, 1, 1, 60),
+            input_host_path=pathlib.Path("/tmp/in/challenge.json"),
+            output_host_path=pathlib.Path("var/runs/x/output"),
+            session_token="t",
+            rcg_endpoint="http://rcg",
+        )

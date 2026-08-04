@@ -148,7 +148,8 @@ validator/
   __main__.py          the validator process
 
 miner/
-  cli/                 ail-miner: init, validate, seal, submit
+  cli/                 ail-miner: init, validate, run, seal, submit
+                       `run` rehearses in the validator's own sandbox, with the same gates
   reference/           the one template — which is also the qualification floor
 
 ops/                 Dockerfiles, compose, runbook

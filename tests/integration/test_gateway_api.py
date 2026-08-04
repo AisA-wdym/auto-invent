@@ -28,7 +28,7 @@ from protocol.receipts import verify_chain
 SEASON = json.loads(pathlib.Path("config/season.example.json").read_text())
 RUNNER_SECRET = "runner-secret-for-tests"
 CHALLENGE = "sha256:" + "c" * 64
-MODEL = "openai/gpt-5"
+MODEL = "openai/gpt-5.2"
 
 
 @dataclass

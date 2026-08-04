@@ -305,8 +305,40 @@ def command_validate(args: argparse.Namespace) -> int:
     print("  13.6 budget exceeded — measured by the RCG during execution")
     print("  13.7 time limit exceeded — measured by the runner's wall clock")
     print("  13.8 fabricated citation — the validator resolves every URL you cite")
-    print("\nTest against those with a local run before you submit.")
+    print("\nRehearse against those before you submit:")
+    print("  docker build -t my-lab:dev .")
+    print("  export AIL_MINER_API_KEY=sk-or-...")
+    print("  ail-miner run . --image my-lab:dev")
     return 0
+
+
+def command_run(args: argparse.Namespace) -> int:
+    """Rehearse the bundle in the validator's own sandbox (see `miner/cli/rehearse.py`).
+
+    The command `validate` has been telling miners to run and which never existed. Everything it
+    needs — the container flags, the network confinement, a metering gateway, a session token — is
+    work the validator already does, and a miner reconstructing it by hand would be building a
+    second definition of what a run is.
+    """
+    from miner.cli.rehearse import api_key_from_environment, rehearse
+
+    try:
+        api_key = api_key_from_environment()
+    except RuntimeError as error:
+        print(str(error), file=sys.stderr)
+        return 2
+
+    try:
+        return rehearse(
+            args.path,
+            image=args.image,
+            api_key=api_key,
+            challenges_path=args.challenges,
+            limit=args.limit,
+        )
+    except (RuntimeError, ValueError, OSError) as error:
+        print(f"rehearsal could not start: {error}", file=sys.stderr)
+        return 2
 
 
 def command_seal(args: argparse.Namespace) -> int:
@@ -422,6 +454,30 @@ def _parser() -> argparse.ArgumentParser:
     validate = sub.add_parser("validate", help="run every check the validator can run offline")
     validate.add_argument("path", type=Path, nargs="?", default=Path("."))
     validate.set_defaults(handler=command_validate)
+
+    run_cmd = sub.add_parser(
+        "run", help="rehearse in the validator's sandbox, against real gates and a real meter"
+    )
+    run_cmd.add_argument("path", type=Path, nargs="?", default=Path("."))
+    run_cmd.add_argument(
+        "--image", required=True, help="the local image tag to run, e.g. my-lab:dev"
+    )
+    run_cmd.add_argument(
+        "--challenges",
+        type=Path,
+        default=None,
+        help=(
+            "a pack to rehearse against; defaults to one built-in challenge. A published past "
+            "round is the harder test"
+        ),
+    )
+    run_cmd.add_argument(
+        "--limit",
+        type=int,
+        default=1,
+        help="how many challenges to run. Each one costs what it costs in a real round",
+    )
+    run_cmd.set_defaults(handler=command_run)
 
     seal = sub.add_parser("seal", help="build the sealed bundle and credential envelope")
     seal.add_argument("path", type=Path, nargs="?", default=Path("."))

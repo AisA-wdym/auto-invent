@@ -185,7 +185,10 @@ class Runner:
                 "what every receipt references, so a run without one cannot be reconciled."
             )
 
-        run_directory = self.workspace / run_id
+        # Resolved, not merely joined. `docker_command` refuses a relative bind source and the
+        # validator's default workspace is a relative `var/runs`, so this is what makes the default
+        # work rather than making the refusal fire on every run.
+        run_directory = (self.workspace / run_id).resolve()
         input_directory = run_directory / "input"
         output_directory = run_directory / "output"
         try:

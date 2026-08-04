@@ -117,6 +117,19 @@ def docker_command(
     controls in 10 are the difference between running adversarial code and being run by it, and a
     missing flag is invisible until it matters — so they are checked as data.
     """
+    for label, path in (("input", input_host_path), ("output", output_host_path)):
+        if not path.is_absolute():
+            # Docker reads a relative bind source as a *volume name*, not a path, so
+            # `-v var/runs/x:/input` silently means "the volume called var/runs/x" and fails with
+            # `invalid volume specification`. The validator's own default workspace is `var/runs`,
+            # so every container would have failed to start — found by running the miner rehearsal
+            # harness, which uses this same function.
+            raise ContainerError(
+                f"the {label} path {path} is relative. Docker reads a relative bind source as a "
+                "volume name rather than a host path, so the mount would not be the directory you "
+                "meant and the container would fail to start."
+            )
+
     if not image_digest.startswith("sha256:"):
         raise ContainerError(
             f"refusing to run {image_digest!r}: only a sha256 digest may be run, never a tag. A "

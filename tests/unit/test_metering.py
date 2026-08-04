@@ -74,8 +74,35 @@ def test_every_price_is_an_integer():
 
 
 def test_an_empty_allowlist_permits_any_declared_model():
-    """The per-run token allowlist is the binding one; a season-wide list is an extra."""
-    assert PRICES.permits("anything/at-all")
+    """The per-run token allowlist is the binding one; a season-wide list is an extra.
+
+    Built with an explicitly empty allowlist rather than from the shipped config. It used to read
+    `PRICES`, which happened to be empty — so the test asserted a property of the config rather than
+    of the code, and it started failing the moment the config was fixed.
+    """
+    empty = PriceTable(
+        rcc_per_1k_in=1_000,
+        rcc_per_1k_out=5_000,
+        rcc_per_search=5_000,
+        allowed_model_slugs=frozenset(),
+    )
+    assert empty.permits("anything/at-all")
+
+
+def test_the_shipped_seasons_allowlist_is_not_empty():
+    """An empty season allowlist is refused at admission — "an empty allowlist read as
+    'unrestricted' would defeat gate 13.3" — so a shipped config with one means *no laboratory can
+    ever be admitted*, on mainnet as much as in a rehearsal.
+
+    Both configs shipped that way until a miner rehearsal was run against them.
+    """
+    import json
+    import pathlib as _pathlib
+
+    for name in ("season.example.json", "season.testnet.json"):
+        season = json.loads((_pathlib.Path("config") / name).read_text())
+        allowed = season["providers"]["miner_pricing"]["allowed_model_slugs"]
+        assert allowed, f"{name} allows no models, so every admission would be refused"
 
 
 def test_a_non_empty_allowlist_excludes_what_it_omits():

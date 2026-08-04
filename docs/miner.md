@@ -29,9 +29,11 @@ That is the whole game: **beat a good single-agent laboratory using the same bud
 pip install -e .                   # or: uv pip install -e .
 ail-miner init my-lab
 cd my-lab
-docker build -t my-lab .
+docker build -t my-lab:dev .
 docker images --digests my-lab     # copy the sha256: digest into manifest.json
-ail-miner validate .
+ail-miner validate .                # every check that needs no run
+export AIL_MINER_API_KEY=sk-or-...  # your own key; the rehearsal spends it
+ail-miner run . --image my-lab:dev  # the real sandbox, the real gates
 ail-miner seal . --out ../sealed --spend-cap 25
 ail-miner submit ../sealed --round 2026-08-03 --url https://your-host/bundle.tar.gz --netuid N
 ```
@@ -195,7 +197,31 @@ score cannot compensate.
 | 13 | validation-environment manipulation | **yes** |
 
 `ail-miner validate` runs every one of the eight marked "yes" and names the gate for each failure.
-Run it. A gate you learn about from a published score has cost you a day.
+
+The other five need a run, and `ail-miner run` is that run:
+
+```bash
+export AIL_MINER_API_KEY=sk-or-...
+ail-miner run . --image my-lab:dev
+```
+
+It executes your laboratory in **the validator's own sandbox** — the same container flags, the same
+internal network with no route out, the same metering gateway, the same thirteen gates — and prints
+every verdict, your measured RCC, your wall clock and your search count. Not a similar harness: it
+imports the validator's own modules, because a second definition of what a run is would drift, and
+the first you would hear about it is a bundle that passed at home and failed on chain.
+
+Two things to know. It spends your key, at the same rate a real round does — so the default is one
+challenge and `--limit` is opt-in. And passing does **not** predict your score: it means you run,
+stay inside your ceiling, finish in time and produce a readable portfolio. The real pack is sealed
+until execution closes and half of it comes from a generator family you did not choose. Rehearse
+against a published past round for a harder test:
+
+```bash
+ail-miner run . --image my-lab:dev --challenges past-round.json --limit 5
+```
+
+A gate you learn about from a published score has cost you a day.
 
 Gate 8 deserves a word: **do not invent citations.** The validator resolves every URL in your
 `nearest_prior_art`. A fabricated one is fatal, and it is one of the most common ways a laboratory

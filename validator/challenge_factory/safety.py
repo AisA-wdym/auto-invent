@@ -176,18 +176,55 @@ def screen(
             return SafetyVerdict(safe=False, excluded_domain=domain, trigger=match.group(0))
 
     for rule in _CONTEXTUAL:
-        match = rule.trigger.search(text)
-        if not match:
-            continue
-        has_context = bool(rule.context.search(text))
-        concerning = has_context if rule.context_makes_it_concerning else not has_context
+        verdict = _apply_contextual(rule, text)
+        if verdict is not None:
+            return verdict
+
+    return SafetyVerdict(safe=True)
+
+
+#: How near a context word has to be to count as context. About two sentences.
+#:
+#: Measured rather than guessed: a real five-idea portfolio on fan-out read latency contained "no
+#: slack to exploit" and "the existing request payload" — both entirely ordinary in distributed
+#: systems — thousands of characters apart in unrelated sentences. Document-level co-occurrence
+#: failed a *fatal* gate on it. The design was always about adjacency ("exploit a buffer overflow"),
+#: and searching the whole flattened document was the bug.
+_CONTEXT_WINDOW = 240
+
+
+def _apply_contextual(rule: _ContextualRule, text: str) -> SafetyVerdict | None:
+    """One contextual rule, with context required to be *near* the trigger.
+
+    Every trigger occurrence is examined, not just the first: a portfolio that uses "exploit"
+    innocently in one place and dangerously in another must be caught on the second.
+
+    For a rule where context makes the term concerning, a verdict is returned only if some
+    occurrence has that context nearby. For a rule where context makes it *fine* — "malware" is
+    concerning, "malware detection" is not — every occurrence must be locally excused, because one
+    paragraph about detection does not make the rest of a document defensive.
+    """
+    matches = list(rule.trigger.finditer(text))
+    if not matches:
+        return None
+
+    for match in matches:
+        window = text[
+            max(0, match.start() - _CONTEXT_WINDOW) : match.end() + _CONTEXT_WINDOW
+        ]
+        nearby = bool(rule.context.search(window))
+        concerning = nearby if rule.context_makes_it_concerning else not nearby
         if concerning:
-            _log.info("candidate screened out: %s (%r)", rule.domain, match.group(0))
+            _log.info(
+                "candidate screened out: %s (%r near %r)",
+                rule.domain,
+                match.group(0),
+                window[:120],
+            )
             return SafetyVerdict(
                 safe=False, excluded_domain=rule.domain, trigger=match.group(0)
             )
-
-    return SafetyVerdict(safe=True)
+    return None
 
 
 def _searchable(candidate: Mapping[str, object]) -> str:

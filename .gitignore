@@ -24,3 +24,4 @@ __pycache__/
 # uv/pip build artefacts
 *.egg-info/
 .hypothesis/
+var/

@@ -34,10 +34,12 @@ a laboratory penalised for the validator running late.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from validator.sandbox.container import Limits
@@ -47,6 +49,7 @@ from validator.submissions import Prepared
 
 __all__ = [
     "Execution",
+    "declared_models",
     "RoundExecution",
     "as_document",
     "execute_round",
@@ -255,7 +258,7 @@ async def _execute_one(
         receipt_calls=result.receipt_calls,
         measured_rcc=int(result.measured_usage.get("rcc", 0)),
         measured_search_calls=int(result.measured_usage.get("search_calls", 0)),
-        declared_models=_declared_models(lab.manifest),
+        declared_models=declared_models(lab.root),
         wall_seconds=result.wall_seconds,
         timed_out=result.timed_out,
         excluded_domains=excluded_domains,
@@ -276,17 +279,39 @@ async def _execute_one(
     )
 
 
-def _declared_models(manifest: Mapping[str, Any]) -> dict[str, str]:
-    """The bundle's locked model manifest, as gate 13.4 wants it.
+def declared_models(root: Path) -> dict[str, str]:
+    """The bundle's locked model manifest as gates 13.3 and 13.4 want it: slug -> snapshot.
 
-    Read from the manifest rather than from anything the laboratory said at runtime. 5.3 locks the
-    manifest at sealing, and a laboratory that could declare its own models at runtime could declare
-    whichever ones it actually used.
+    Read from `model_manifest.json` in the bundle, not from anything the laboratory said at runtime.
+    5.3 locks it at sealing, and a laboratory that could declare its own models at runtime could
+    declare whichever ones it actually used.
+
+    This read `bundle_manifest["model_manifest"]` until a miner rehearsal was run against it — a key
+    that does not exist, because 5.3's manifest is a separate file with a different shape. It
+    returned `{}` for every laboratory, and an empty declaration fails gate 13.3 for anything that
+    made a single call. Every laboratory would have failed, every round.
     """
-    declared = manifest.get("model_manifest", {})
-    if isinstance(declared, Mapping):
-        return {str(key): str(value) for key, value in declared.items()}
-    return {}
+    path = root / "model_manifest.json"
+    if not path.is_file():
+        return {}
+    try:
+        body = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        # Unreadable is the same as absent for this purpose: gate 13.3 fails either way, and the
+        # gate's message is the one a miner can act on.
+        return {}
+
+    models = body.get("models", body)
+    if isinstance(models, Mapping):
+        return {str(key): str(value) for key, value in models.items()}
+    declared: dict[str, str] = {}
+    for entry in models if isinstance(models, list) else ():
+        if not isinstance(entry, Mapping):
+            continue
+        slug = str(entry.get("model_slug", ""))
+        if slug:
+            declared[slug] = str(entry.get("model_snapshot", "") or slug)
+    return declared
 
 
 # --------------------------------------------------------------------------

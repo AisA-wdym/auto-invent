@@ -400,3 +400,64 @@ def test_a_round_where_nothing_passed_still_publishes_every_laboratory():
     assert len(labs) == 1
     assert labs[0].failed_gates == ("13.6 budget exceeded",)
     assert labs[0].rolling_ppm == 0
+
+
+# --------------------------------------------------------------------------
+# 5.3: the model manifest is a separate file with its own shape
+# --------------------------------------------------------------------------
+
+
+def test_the_model_manifest_is_read_from_its_own_file_in_its_own_shape(tmp_path):
+    """The blocking defect a miner rehearsal found.
+
+    The reader was `bundle_manifest["model_manifest"]` — a key that does not exist, because 5.3's
+    manifest is a separate file holding a *list* of model records. It returned `{}` for every
+    laboratory, and an empty declaration fails gate 13.3 for anything that made a single call. Every
+    laboratory would have failed, every round, on a fatal gate.
+    """
+    from validator.execution import declared_models
+
+    (tmp_path / "model_manifest.json").write_text(
+        json.dumps(
+            {
+                "models": [
+                    {
+                        "alias": "primary",
+                        "model_slug": "anthropic/claude-sonnet-5",
+                        "model_snapshot": "anthropic/claude-sonnet-5",
+                    },
+                    {"alias": "critic", "model_slug": "openai/gpt-5.2"},
+                ]
+            }
+        )
+    )
+    declared = declared_models(tmp_path)
+    assert declared["anthropic/claude-sonnet-5"] == "anthropic/claude-sonnet-5"
+    # A record with no snapshot declares the slug as its own snapshot rather than an empty string:
+    # gate 13.4 compares the receipt's revision against this, and empty reads as a mismatch.
+    assert declared["openai/gpt-5.2"] == "openai/gpt-5.2"
+
+
+def test_a_missing_model_manifest_declares_nothing_rather_than_raising(tmp_path):
+    """An absent manifest is a bundle that fails gate 13.3, which is the miner's problem and says
+    so. Raising here would make it the round's problem."""
+    from validator.execution import declared_models
+
+    assert declared_models(tmp_path) == {}
+
+
+def test_an_unreadable_model_manifest_declares_nothing(tmp_path):
+    from validator.execution import declared_models
+
+    (tmp_path / "model_manifest.json").write_text("{ not json")
+    assert declared_models(tmp_path) == {}
+
+
+def test_the_scaffolds_own_manifest_is_readable_by_the_validator(tmp_path):
+    """The seam between `ail-miner init` and the validator. Both sides shipped, and disagreed."""
+    from miner.reference.template import scaffold
+    from validator.execution import declared_models
+
+    (tmp_path / "model_manifest.json").write_text(scaffold()["model_manifest.json"])
+    declared = declared_models(tmp_path)
+    assert declared, "the scaffold a miner starts from declares nothing the validator can read"
