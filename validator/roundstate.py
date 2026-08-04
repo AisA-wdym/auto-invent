@@ -50,7 +50,14 @@ from typing import Any, Protocol
 
 from validator.cycle import Phase
 
+
+class StoreError(RuntimeError):
+    """A round document that must not be written where it was about to be written."""
+
 __all__ = [
+    "FanoutRoundStore",
+    "PublicOnlyRedisStore",
+    "StoreError",
     "InMemoryRoundStore",
     "LabStatus",
     "RedisRoundStore",
@@ -440,3 +447,116 @@ def summarise(rounds: Sequence[RoundState]) -> dict[str, Any]:
         "history": history,
         "days_burned": sum(1 for entry in history if entry["burned"]),
     }
+
+
+@dataclass
+class PublicOnlyRedisStore:
+    """A write target that *cannot* hold the day's problems.
+
+    The reason this exists is a deployment shape the design did not anticipate. `RedisRoundStore`
+    writes two keys to one Redis — `round:{date}`, the full document including the problems, and
+    `round:public:{date}`, the gated one. That is correct while the Redis is the validator's own and
+    unreachable from anywhere else.
+
+    It stops being correct the moment the dashboard runs somewhere the validator's Redis cannot be
+    reached privately. Exposing that Redis publicly would put the day's problems one password away
+    from anyone, and 6.2 is the guarantee that a laboratory cannot read a problem before it is given
+    one. A leak there does not degrade the measurement, it ends it.
+
+    So the public surface gets its own store, and the safety is structural rather than a decision:
+    this class never calls `as_document()`. There is no path through it that writes the full state,
+    so no future edit can make it leak by forgetting a filter.
+    """
+
+    url: str = "redis://127.0.0.1:6379/0"
+    namespace: str = "round"
+    _client: Any = field(default=None, repr=False)
+
+    def _redis(self) -> Any:
+        if self._client is None:
+            import redis
+
+            self._client = redis.Redis.from_url(self.url, decode_responses=True)
+        return self._client
+
+    def write(self, state: RoundState, *, ttl_days: int = 90) -> None:
+        """Publish the gated document, and only that.
+
+        One key per round, named the same as in the private store so a reader is identical either
+        way — the dashboard does not know or care which shape of store it is pointed at.
+        """
+        document = state.public_view()
+        # A last check on the way out. `public_view` is already the gate and this is not a second
+        # one: it is an assertion that the gate ran, because this store may be internet-reachable
+        # and the cost of being wrong here is the whole measurement.
+        if not state.disclosed() and "challenges" in document:
+            raise StoreError(
+                f"refusing to publish {state.date}: the document carries `challenges` while the "
+                f"round is in {state.phase}, which 6.2 does not disclose. This store may be "
+                "publicly reachable, so a gate that failed here would publish the day's problems "
+                "to anyone."
+            )
+        self._redis().set(
+            f"{self.namespace}:public:{state.date}",
+            json.dumps(document, sort_keys=True),
+            ex=ttl_days * _SECONDS_PER_DAY,
+        )
+
+    def read(self, date: str) -> RoundState | None:
+        """Always `None`. This store holds no full documents to read.
+
+        Implemented rather than omitted so the type is a `RoundStore` — and returning `None` is
+        honest: a validator that recovered its round from here would be recovering a document with
+        no problems in it.
+        """
+        return None
+
+    def read_public(self, date: str) -> dict[str, Any] | None:
+        raw = self._redis().get(f"{self.namespace}:public:{date}")
+        return json.loads(raw) if raw else None
+
+    def recent(self, limit: int) -> list[RoundState]:
+        """Empty. `recent` returns full states, and there are none here."""
+        return []
+
+
+@dataclass
+class FanoutRoundStore:
+    """Writes to the validator's own store, then publishes the gated document.
+
+    Reads come from `primary` only. The publish target is write-only as far as the validator is
+    concerned: it is the dashboard's copy, and a validator that read its own round back from a
+    publicly writable place would be trusting a document anyone could have changed.
+
+    A failure to publish is logged and does not fail the round. The private write is what the
+    validator needs to recover; the public one is what a web page needs to render, and losing a
+    render is not worth losing a day over.
+    """
+
+    primary: RoundStore
+    publish: PublicOnlyRedisStore
+
+    def write(self, state: RoundState, *, ttl_days: int = 90) -> None:
+        self.primary.write(state, ttl_days=ttl_days)
+        try:
+            self.publish.write(state, ttl_days=ttl_days)
+        except StoreError:
+            # A gate failure is not a publishing hiccup. Re-raised, because it means the document
+            # would have disclosed problems early and that is worth stopping for.
+            raise
+        except Exception as error:  # noqa: BLE001 - redis raises a wide family
+            _log.error(
+                "could not publish round %s to the dashboard store (%s). The round continues; the "
+                "public page will show the last document it received.",
+                state.date,
+                error,
+            )
+
+    def read(self, date: str) -> RoundState | None:
+        return self.primary.read(date)
+
+    def read_public(self, date: str) -> dict[str, Any] | None:
+        return self.primary.read_public(date)
+
+    def recent(self, limit: int) -> list[RoundState]:
+        return self.primary.recent(limit)

@@ -39,6 +39,7 @@ def args(**over) -> argparse.Namespace:
         hotkey="default",
         rcg_endpoint="http://127.0.0.1:8081",
         redis_url="",
+        publish_redis_url="",
         workspace=pathlib.Path("var/runs"),
         concurrency=2,
         runner_token="runner-token",

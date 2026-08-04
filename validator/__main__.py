@@ -73,8 +73,10 @@ from validator.judge.pointwise import aggregate
 from validator.model_client import ModelClient
 from validator.rounds import FunnelConfig, RoundScores, score_round
 from validator.roundstate import (
+    FanoutRoundStore,
     InMemoryRoundStore,
     LabStatus,
+    PublicOnlyRedisStore,
     RedisRoundStore,
     RoundState,
     RoundStore,
@@ -118,6 +120,15 @@ def _parser() -> argparse.ArgumentParser:
         "--rcg-endpoint", default=os.environ.get("AI_RCG_ENDPOINT", "http://127.0.0.1:8081")
     )
     parser.add_argument("--redis-url", default=os.environ.get("AI_REDIS_URL", ""))
+    parser.add_argument(
+        "--publish-redis-url",
+        default=os.environ.get("AI_PUBLISH_REDIS_URL", ""),
+        help=(
+            "a second Redis that receives only the gated public document, for a dashboard that "
+            "cannot reach --redis-url privately. Never point this at --redis-url: that store holds "
+            "the day's problems, and 6.2 is the guarantee a laboratory cannot read one early"
+        ),
+    )
     parser.add_argument("--workspace", default=Path("var/runs"), type=Path)
     parser.add_argument(
         "--concurrency",
@@ -222,6 +233,23 @@ class Validator:
                 "abandoned rather than resumed."
             )
             self.round_store = InMemoryRoundStore()
+
+        # A hosted dashboard cannot reach the validator's own Redis privately, and exposing that one
+        # would put the day's problems behind nothing but a password. So the public surface gets a
+        # store that structurally cannot hold them — see `PublicOnlyRedisStore`.
+        if args.publish_redis_url:
+            if args.publish_redis_url == args.redis_url:
+                raise StoreError(
+                    "--publish-redis-url is the same as --redis-url. That store holds the full "
+                    "round document including the day's problems, and the publish target may be "
+                    "internet-reachable — 6.2 is the guarantee a laboratory cannot read a problem "
+                    "before it is given one."
+                )
+            self.round_store = FanoutRoundStore(
+                primary=self.round_store,
+                publish=PublicOnlyRedisStore(url=args.publish_redis_url),
+            )
+            _log.info("publishing gated round documents to a second store for the dashboard")
 
         self.funnel = FunnelConfig.from_season(season)
         self.fetch_limits = FetchLimits()

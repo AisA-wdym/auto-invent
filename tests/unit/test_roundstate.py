@@ -309,3 +309,124 @@ def test_burned_days_are_counted():
 
 def test_an_empty_history_is_not_an_error():
     assert summarise([]) == {"rounds_recorded": 0, "history": [], "days_burned": 0}
+
+
+# --------------------------------------------------------------------------
+# 6.2 across a network boundary: the publish target cannot hold the problems
+# --------------------------------------------------------------------------
+
+
+class FakeRedis:
+    """Enough Redis to see exactly which keys were written."""
+
+    def __init__(self) -> None:
+        self.keys: dict[str, str] = {}
+
+    def set(self, key, value, ex=None):
+        self.keys[key] = value
+
+    def get(self, key):
+        return self.keys.get(key)
+
+
+def public_store(client):
+    from validator.roundstate import PublicOnlyRedisStore
+
+    store = PublicOnlyRedisStore(url="redis://unused")
+    store._client = client
+    return store
+
+
+def test_the_publish_target_writes_only_the_gated_document():
+    """The deployment shape the design did not anticipate: a dashboard that cannot reach the
+    validator's Redis privately.
+
+    `RedisRoundStore` writes the full document and the gated one to *one* Redis, which is right
+    while that Redis is the validator's own. Exposing it to reach a hosted dashboard would put the
+    day's problems one password away from anyone — and 6.2 is the guarantee a laboratory cannot
+    read a problem before it is given one.
+    """
+    client = FakeRedis()
+    public_store(client).write(state(phase=Phase.EXECUTING.name))
+    assert list(client.keys) == ["round:public:2026-08-03"]
+    assert SECRET not in client.keys["round:public:2026-08-03"]
+
+
+def test_the_publish_target_has_no_path_that_writes_the_full_document():
+    """Structural, not a decision. `as_document()` is never called, so no future edit can make this
+    leak by forgetting a filter — which is the failure mode a filter always eventually has."""
+    import ast
+    import inspect
+
+    from validator.roundstate import PublicOnlyRedisStore
+
+    # Parsed, not grepped: the docstring above explains *why* `as_document` is absent, so a text
+    # search finds the explanation and fails. What matters is whether it is ever called.
+    tree = ast.parse(inspect.getsource(PublicOnlyRedisStore))
+    called = {
+        node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
+    }
+    assert "as_document" not in called
+
+
+def test_publishing_a_disclosed_round_carries_the_problems():
+    """The other half. Withholding forever would make the subnet unauditable, which is the opposite
+    failure — 6.3 publishes everything once execution has closed."""
+    client = FakeRedis()
+    public_store(client).write(state(phase=Phase.DONE.name))
+    assert SECRET in client.keys["round:public:2026-08-03"]
+
+
+def test_a_gate_that_failed_stops_the_publish_rather_than_leaking():
+    """A last assertion on the way out. `public_view` is the gate and this is not a second one;
+    it is a check that the gate ran, because this store may be internet-reachable."""
+    from validator.roundstate import PublicOnlyRedisStore, StoreError
+
+    class Leaky(RoundState):
+        def public_view(self):
+            document = super().public_view()
+            document["challenges"] = [{"problem_statement": SECRET}]
+            return document
+
+    leaky = Leaky(
+        date="2026-08-03",
+        validator_hotkey="5Gv",
+        phase=Phase.EXECUTING.name,
+        block=1,
+        challenges=challenges(),
+    )
+    client = FakeRedis()
+    store = PublicOnlyRedisStore(url="redis://unused")
+    store._client = client
+    with pytest.raises(StoreError, match="does not disclose"):
+        store.write(leaky)
+    assert client.keys == {}
+
+
+def test_the_fanout_reads_only_from_the_private_store():
+    """The publish target is write-only to the validator. Reading its own round back from a place
+    anyone can write would be trusting a document anyone could have changed."""
+    from validator.roundstate import FanoutRoundStore
+
+    client = FakeRedis()
+    primary = InMemoryRoundStore()
+    fanout = FanoutRoundStore(primary=primary, publish=public_store(client))
+    fanout.write(state(phase=Phase.EXECUTING.name))
+
+    assert fanout.read("2026-08-03").challenges  # the private copy keeps the problems
+    assert list(client.keys) == ["round:public:2026-08-03"]
+
+
+def test_a_publish_failure_does_not_fail_the_round():
+    """The private write is what the validator needs to recover. Losing a render is not worth losing
+    a day over."""
+    from validator.roundstate import FanoutRoundStore, PublicOnlyRedisStore
+
+    class Broken(PublicOnlyRedisStore):
+        def write(self, state_, *, ttl_days=90):
+            raise ConnectionError("redis is down")
+
+    primary = InMemoryRoundStore()
+    fanout = FanoutRoundStore(primary=primary, publish=Broken(url="redis://unused"))
+    fanout.write(state(phase=Phase.EXECUTING.name))
+    assert primary.read("2026-08-03") is not None
