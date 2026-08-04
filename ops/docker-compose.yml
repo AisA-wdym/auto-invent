@@ -85,6 +85,11 @@ services:
       rcg: {condition: service_healthy}
     networks:
       - upstream            # NOT on `sandbox`: it has no reason to be reachable by a laboratory
+    # The season is an argument, not an environment variable: `--season` has no env fallback in the
+    # parser, so without this the container runs the *example* config — which correctly refuses to
+    # start while the probe is unwired, and did. Defaulted rather than hardcoded so the shipped
+    # compose still describes a mainnet deployment.
+    command: ["--season", "${AI_SEASON:-config/season.example.json}"]
     environment:
       AI_NETUID: "${AI_NETUID:?set AI_NETUID in ops/.env}"
       AI_NETWORK: ${AI_NETWORK:-finney}
@@ -93,8 +98,15 @@ services:
       AI_RCG_ENDPOINT: http://rcg:8081
       AI_REDIS_URL: redis://redis:6379/0
       AI_RUNNER_SECRET: "${AI_RUNNER_SECRET:?}"
-      # The gateway resolves `rcg` on the sandbox network; a laboratory is given this address and
-      # can reach nothing else.
+      # The validator's *own* OpenRouter account. It was missing here, and the omission is not
+      # cosmetic: 5.4 makes challenge generation, critique, judging and prior art validator costs,
+      # and `load_validator_credential` refuses to fall back to a miner's key — so the container
+      # started, validated its config, and died at the first generation call. The gateway had the
+      # secret and the validator did not, which reads as though the validator spends through the
+      # gateway. It does not: it calls OpenRouter directly on this key.
+      AI_VALIDATOR_OPENROUTER_KEY_FILE: /run/secrets/openrouter
+    secrets:
+      - openrouter
     volumes:
       # The Docker socket, so laboratories run as sibling containers. See Dockerfile.validator for
       # what this privilege is and why it is bounded.

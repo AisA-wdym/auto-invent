@@ -77,6 +77,33 @@ def test_the_openrouter_key_is_a_secret_rather_than_an_environment_value(compose
     assert "AI_VALIDATOR_OPENROUTER_KEY" not in compose["services"]["rcg"]["environment"]
 
 
+def test_the_validator_is_given_its_own_openrouter_credential(compose):
+    """5.4 makes generation, critique, judging and prior art *validator* costs.
+
+    The validator calls OpenRouter directly on its own key — it does not spend through the gateway,
+    which holds only miner credentials. The compose file gave the secret to `rcg` and not to
+    `validator`, which reads as though the gateway pays for everything; the validator therefore
+    started, validated its config, and died at the first generation call, because
+    `load_validator_credential` refuses to fall back to a miner's key rather than making the
+    equal-budget guarantee a fiction.
+    """
+    validator = compose["services"]["validator"]
+    assert validator["secrets"] == ["openrouter"]
+    assert validator["environment"]["AI_VALIDATOR_OPENROUTER_KEY_FILE"] == "/run/secrets/openrouter"
+
+
+def test_the_validator_is_told_which_season_to_run(compose):
+    """`--season` has no environment fallback, so an unset one runs the example config.
+
+    That config correctly refuses to start while 7.4 step 5 is unwired, so a deployment with no
+    override does not run at all — and the failure names the probe rather than the missing
+    argument.
+    """
+    command = compose["services"]["validator"].get("command")
+    assert command, "the validator must be told a season; the parser has no env fallback"
+    assert "--season" in command
+
+
 def test_no_service_carries_a_literal_credential(compose):
     """Every secret is a reference. A literal here would be committed."""
     for name, service in compose["services"].items():
