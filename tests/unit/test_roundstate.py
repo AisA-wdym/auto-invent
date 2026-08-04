@@ -317,16 +317,29 @@ def test_an_empty_history_is_not_an_error():
 
 
 class FakeRedis:
-    """Enough Redis to see exactly which keys were written."""
+    """Enough Redis to see exactly which keys were written, including the roster set."""
 
     def __init__(self) -> None:
         self.keys: dict[str, str] = {}
+        self.sets: dict[str, set[str]] = {}
 
     def set(self, key, value, ex=None):
         self.keys[key] = value
 
     def get(self, key):
         return self.keys.get(key)
+
+    def sadd(self, key, *members):
+        self.sets.setdefault(key, set()).update(members)
+
+    def expire(self, key, seconds):
+        return True
+
+    def pipeline(self):
+        return self
+
+    def execute(self):
+        return []
 
 
 def public_store(client):
@@ -348,8 +361,8 @@ def test_the_publish_target_writes_only_the_gated_document():
     """
     client = FakeRedis()
     public_store(client).write(state(phase=Phase.EXECUTING.name))
-    assert list(client.keys) == ["auto-invent:round:public:2026-08-03"]
-    assert SECRET not in client.keys["auto-invent:round:public:2026-08-03"]
+    assert list(client.keys) == ["auto-invent:round:public:5Gvalidator:2026-08-03"]
+    assert SECRET not in client.keys["auto-invent:round:public:5Gvalidator:2026-08-03"]
 
 
 def test_the_publish_target_has_no_path_that_writes_the_full_document():
@@ -374,7 +387,7 @@ def test_publishing_a_disclosed_round_carries_the_problems():
     failure — 6.3 publishes everything once execution has closed."""
     client = FakeRedis()
     public_store(client).write(state(phase=Phase.DONE.name))
-    assert SECRET in client.keys["auto-invent:round:public:2026-08-03"]
+    assert SECRET in client.keys["auto-invent:round:public:5Gvalidator:2026-08-03"]
 
 
 def test_a_gate_that_failed_stops_the_publish_rather_than_leaking():
@@ -414,7 +427,7 @@ def test_the_fanout_reads_only_from_the_private_store():
     fanout.write(state(phase=Phase.EXECUTING.name))
 
     assert fanout.read("2026-08-03").challenges  # the private copy keeps the problems
-    assert list(client.keys) == ["auto-invent:round:public:2026-08-03"]
+    assert list(client.keys) == ["auto-invent:round:public:5Gvalidator:2026-08-03"]
 
 
 def test_a_publish_failure_does_not_fail_the_round():
@@ -448,4 +461,32 @@ def test_the_publish_namespace_is_the_one_the_dashboard_reads():
 
     client = FakeRedis()
     public_store(client).write(state(phase=Phase.DONE.name))
-    assert list(client.keys) == ["auto-invent:round:public:2026-08-03"]
+    assert list(client.keys) == ["auto-invent:round:public:5Gvalidator:2026-08-03"]
+
+
+def test_two_validators_do_not_overwrite_each_other():
+    """17.5 makes disagreement the expected state: each validator draws its own salt, generates its
+    own problems and scores its own field. A date-only key made "the round for 2026-08-04" one
+    object, so two validators publishing into one store overwrote each other and a dashboard polling
+    across the writes flipped between two internally-consistent views of the same day.
+
+    Found when a second validator came up on subnet 542.
+    """
+    client = FakeRedis()
+    store = public_store(client)
+    store.write(state(validator_hotkey="5Gone"))
+    store.write(state(validator_hotkey="5Gtwo"))
+    assert sorted(client.keys) == [
+        "auto-invent:round:public:5Gone:2026-08-03",
+        "auto-invent:round:public:5Gtwo:2026-08-03",
+    ]
+
+
+def test_the_roster_accumulates_so_a_reader_can_enumerate_validators():
+    """A set rather than a scan over key names: a reader that parsed hotkeys out of keys would need
+    to know the key shape, which is the coupling this store exists to keep on one side."""
+    client = FakeRedis()
+    store = public_store(client)
+    store.write(state(validator_hotkey="5Gone"))
+    store.write(state(validator_hotkey="5Gtwo"))
+    assert client.sets["auto-invent:round:validators"] == {"5Gone", "5Gtwo"}

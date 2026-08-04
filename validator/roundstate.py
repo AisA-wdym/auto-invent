@@ -489,8 +489,22 @@ class PublicOnlyRedisStore:
     def write(self, state: RoundState, *, ttl_days: int = 90) -> None:
         """Publish the gated document, and only that.
 
-        One key per round, named the same as in the private store so a reader is identical either
-        way — the dashboard does not know or care which shape of store it is pointed at.
+        ## The key carries the validator, because two of them do not agree
+
+        Keyed `{namespace}:public:{validator}:{date}`, not by date alone. 17.5 makes disagreement the
+        *expected* state: every validator draws its own salt, generates its own twenty problems and
+        scores its own field, so "the round for 2026-08-04" is a different object per validator.
+
+        A date-only key made them one object. Two validators publishing into one store overwrote each
+        other, and a dashboard polling across the writes would flip between two validators' views of
+        the same day — each internally consistent, the pair meaningless, and nothing anywhere
+        reporting a problem. Found when a second validator came up on subnet 542.
+
+        The private store keeps its date-only key: it holds one validator's own state and nothing
+        else can write to it, so there is no collision to prevent there.
+
+        `{namespace}:validators` accumulates the hotkeys seen, so a reader can enumerate them rather
+        than having to be told in advance which ones exist.
         """
         document = state.public_view()
         # A last check on the way out. `public_view` is already the gate and this is not a second
@@ -503,11 +517,20 @@ class PublicOnlyRedisStore:
                 "publicly reachable, so a gate that failed here would publish the day's problems "
                 "to anyone."
             )
-        self._redis().set(
-            f"{self.namespace}:public:{state.date}",
+        client = self._redis()
+        expiry = ttl_days * _SECONDS_PER_DAY
+        pipeline = client.pipeline()
+        pipeline.set(
+            f"{self.namespace}:public:{state.validator_hotkey}:{state.date}",
             json.dumps(document, sort_keys=True),
-            ex=ttl_days * _SECONDS_PER_DAY,
+            ex=expiry,
         )
+        # The roster. A set rather than a scan over key names: a reader that had to parse hotkeys out
+        # of keys would need to know the key shape, which is the coupling this store exists to keep
+        # on one side of the boundary.
+        pipeline.sadd(f"{self.namespace}:validators", state.validator_hotkey)
+        pipeline.expire(f"{self.namespace}:validators", expiry)
+        pipeline.execute()
 
     def read(self, date: str) -> RoundState | None:
         """Always `None`. This store holds no full documents to read.
@@ -519,8 +542,13 @@ class PublicOnlyRedisStore:
         return None
 
     def read_public(self, date: str) -> dict[str, Any] | None:
-        raw = self._redis().get(f"{self.namespace}:public:{date}")
-        return json.loads(raw) if raw else None
+        """This store's own document for a date, if this process wrote one.
+
+        Needs a hotkey to be unambiguous and does not have one, so it answers for *this* validator
+        only — which is all a validator would ever want from its own publish target. The dashboard
+        reads by hotkey; see `dashboard/store.py`.
+        """
+        return None
 
     def recent(self, limit: int) -> list[RoundState]:
         """Empty. `recent` returns full states, and there are none here."""
