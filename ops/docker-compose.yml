@@ -105,7 +105,15 @@ services:
       # Never the same Redis as AI_REDIS_URL. That store holds the day's unrevealed problems, and
       # keeping them unreadable until execution closes is what the seal guarantees.
       AI_PUBLISH_REDIS_URL: ${AI_PUBLISH_REDIS_URL:-}
+      # One value, two names: the gateway *verifies* AI_RUNNER_SECRET and the validator *presents*
+      # it as AI_RUNNER_TOKEN. Only the first was passed here, so `--runner-token` fell back to its
+      # empty default and every admission carried the header `Bearer ` with nothing after it —
+      # which httpx refuses to send at all ("Illegal header value b'Bearer '").
+      #
+      # It surfaced at EXECUTE, on the one laboratory that had cleared every admission check, and
+      # read as though the gateway were unreachable. It was not: the request was never built.
       AI_RUNNER_SECRET: "${AI_RUNNER_SECRET:?}"
+      AI_RUNNER_TOKEN: "${AI_RUNNER_SECRET:?}"
       # The validator's *own* OpenRouter account. It was missing here, and the omission is not
       # cosmetic: 5.4 makes challenge generation, critique, judging and prior art validator costs,
       # and `load_validator_credential` refuses to fall back to a miner's key — so the container

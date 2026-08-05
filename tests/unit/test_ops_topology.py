@@ -92,6 +92,21 @@ def test_the_validator_is_given_its_own_openrouter_credential(compose):
     assert validator["environment"]["AI_VALIDATOR_OPENROUTER_KEY_FILE"] == "/run/secrets/openrouter"
 
 
+def test_the_validator_presents_the_runner_secret_under_the_name_it_reads(compose):
+    """One value, two names, and passing only one of them empties the token.
+
+    The gateway *verifies* `AI_RUNNER_SECRET`; the validator *presents* it as `AI_RUNNER_TOKEN`
+    (`--runner-token`, whose default is the empty string). With only the gateway's name set, every
+    admission carried `Bearer ` with nothing after it — a header httpx refuses to send, so the
+    request was never built and the failure read as an unreachable gateway.
+
+    Asserted as equal rather than merely present: two names for one value is the defect, and the
+    only thing that makes it safe is that both resolve to the same thing.
+    """
+    environment = compose["services"]["validator"]["environment"]
+    assert environment["AI_RUNNER_TOKEN"] == environment["AI_RUNNER_SECRET"]
+
+
 def test_the_validator_is_told_which_season_to_run(compose):
     """`--season` has no environment fallback, so an unset one runs the example config.
 

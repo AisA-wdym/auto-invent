@@ -129,8 +129,13 @@ def main(argv: list[str] | None = None) -> int:
 
     import uvicorn
 
+    # Names the variable the *validator* reads, which is not the one this process reads. The
+    # gateway verifies `AI_RUNNER_SECRET`; the validator presents the same value as
+    # `AI_RUNNER_TOKEN`. This line used to say AI_RUNNER_SECRET, so an operator who followed it
+    # exactly set the gateway's name on both sides, the validator's token stayed empty, and every
+    # admission failed with an unsendable `Bearer ` header.
     _log.info(
-        "runner secret for this process: %s (export as AI_RUNNER_SECRET for the validator)",
+        "runner secret for this process: %s (the validator presents this as AI_RUNNER_TOKEN)",
         state.runner_secret,
     )
     uvicorn.run(build_app(state), host=args.host, port=args.port, log_level=args.log_level.lower())
