@@ -270,7 +270,7 @@ class OpenRouterAdapter:
                 attempts=attempts,
             )
             return CallOutcome(
-                text=_content(raw),
+                text=_required_content(raw),
                 tokens_in=usage["tokens_in"],
                 tokens_out=usage["tokens_out"],
                 rcc=rcc,
@@ -510,6 +510,35 @@ def _content(raw: Any) -> str:
     if content is None and isinstance(message, dict):
         content = message.get("content")
     return content or ""
+
+
+def _required_content(raw: Any) -> str:
+    """The reply text, or an error naming why there is none.
+
+    A provider can answer 200, charge for the tokens, and return empty content — a refusal, a
+    response whose whole budget went to reasoning, or a stop before the first token. Returning ""
+    for that makes the laboratory carry an empty string through three more stages and fail at the
+    end with "the reply is not a portfolio", which names the symptom and hides the cause. The run
+    is already paid for either way; what differs is whether anyone can tell what happened.
+    """
+    text = _content(raw)
+    if text:
+        return text
+    choice = _first_choice(raw)
+    finish = getattr(choice, "finish_reason", None) or (
+        choice.get("finish_reason") if isinstance(choice, dict) else None
+    )
+    message = _message(raw)
+    refusal = getattr(message, "refusal", None) or (
+        message.get("refusal") if isinstance(message, dict) else None
+    )
+    raise AdapterError(
+        "the provider returned an empty completion "
+        f"(finish_reason={finish or 'absent'}"
+        + (f", refusal={str(refusal)[:200]}" if refusal else "")
+        + "). The tokens were charged, so this is the provider declining to answer rather than a "
+        "transport failure — usually a prompt it will not act on."
+    )
 
 
 def _tool_calls(raw: Any) -> list[dict[str, Any]]:

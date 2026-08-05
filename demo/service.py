@@ -53,6 +53,41 @@ _log = logging.getLogger(__name__)
 #: cost, and this stops a megabyte of text reaching the linter at all.
 MAXIMUM_PROBLEM_CHARS = 6_000
 
+#: What a problem statement has to contain before a run is worth starting. A length check alone
+#: admits one phrase repeated forty times and a line of keyboard mash — both of which run the full
+#: pipeline, spend the cap, and come back with an empty reply from a model that had nothing to
+#: answer. Refusing here costs the visitor a sentence; admitting costs a run and eight minutes.
+#:
+#: Set to admit a terse one-sentence problem, which is a real thing a visitor writes. What it
+#: refuses is an absence of content, not brevity.
+MINIMUM_DISTINCT_WORDS = 10
+MINIMUM_DISTINCT_RATIO = 0.25
+LONGEST_PLAUSIBLE_WORD = 45
+
+
+def _assert_substantive(statement: str) -> None:
+    """Refuse a statement with no problem in it, and say which way it failed."""
+    words = statement.split()
+    lowered = [word.strip(".,;:()[]\"'").lower() for word in words]
+    distinct = {word for word in lowered if word}
+    if any(len(word) > LONGEST_PLAUSIBLE_WORD for word in lowered):
+        raise DemoError(
+            "the problem statement contains an unbroken run of characters too long to be a word. "
+            "A laboratory cannot find a research direction in it, and the run would cost several "
+            "minutes to tell you so."
+        )
+    if len(distinct) < MINIMUM_DISTINCT_WORDS:
+        raise DemoError(
+            f"the problem statement has {len(distinct)} distinct words. Describe what is actually "
+            "hard: what breaks, why the obvious approaches fail, and what an answer has to "
+            "respect. A laboratory given a phrase returns five generalities."
+        )
+    if len(distinct) / len(lowered) < MINIMUM_DISTINCT_RATIO:
+        raise DemoError(
+            "the problem statement repeats the same few words. It reads as filler rather than a "
+            "problem, and a laboratory has nothing to work on in it."
+        )
+
 
 @dataclass
 class DemoConfig:
@@ -192,6 +227,7 @@ class DemoService:
                 "needing more than that is several problems, and a laboratory given several "
                 "answers none of them well."
             )
+        _assert_substantive(statement)
 
         constraints = [
             str(entry).strip()

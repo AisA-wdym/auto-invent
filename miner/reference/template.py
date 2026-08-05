@@ -431,7 +431,17 @@ class _Rcg:
         }
         if as_json:
             body["response_format"] = {"type": "json_object"}
-        return str(self._post("/v1/llm", body, _CALL_TIMEOUT).get("content", ""))
+        reply = self._post("/v1/llm", body, _CALL_TIMEOUT)
+        content = reply.get("content")
+        if not content:
+            # Not defaulted to "". An empty reply carried forward is indistinguishable four stages
+            # later from a model that answered badly, and the run has already been paid for.
+            raise ValueError(
+                f"the gateway returned no content for a {model} call "
+                f"({reply.get('rcc_charged', 0)} RCC charged). The call was billed, so the model "
+                "declined to answer rather than the request failing to arrive."
+            )
+        return str(content)
 
     def search(self, *, query: str, model: str, snapshot: str, max_results: int = 8) -> dict:
         return self._post(
@@ -491,7 +501,13 @@ def _survey(rcg: _Rcg, challenge: dict, *, model: str, snapshot: str) -> str:
             max_tokens=4_000,
             temperature=0.3,
         )
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as error:
+    except (
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+        OSError,
+        ValueError,
+    ) as error:
         print(f"survey synthesis failed: {error}", file=sys.stderr)
         return joined[:4_000]
 
@@ -521,7 +537,13 @@ def _diverge(rcg: _Rcg, challenge: dict, survey: str, *, model: str, snapshot: s
             max_tokens=6_000,
             temperature=0.9,
         )
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as error:
+    except (
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+        OSError,
+        ValueError,
+    ) as error:
         print(f"divergence failed: {error}", file=sys.stderr)
         return ""
 
@@ -548,7 +570,13 @@ def _audit(rcg: _Rcg, portfolio_text: str, *, model: str, snapshot: str) -> str:
             max_tokens=4_000,
             temperature=0.2,
         )
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as error:
+    except (
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+        OSError,
+        ValueError,
+    ) as error:
         print(f"audit failed: {error}", file=sys.stderr)
         return ""
 
@@ -632,6 +660,9 @@ def run() -> int:
         return 1
     except (urllib.error.URLError, TimeoutError, OSError) as error:
         print(f"could not reach the RCG at {endpoint}: {error}", file=sys.stderr)
+        return 1
+    except ValueError as error:
+        print(f"the model produced no portfolio: {error}", file=sys.stderr)
         return 1
 
     # The raw reply is written before it is parsed. A parse failure otherwise discards the only

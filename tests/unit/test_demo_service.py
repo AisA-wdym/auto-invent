@@ -205,3 +205,32 @@ def test_a_full_queue_refuses_rather_than_growing():
     subject = service(maximum_queued=0)
     with pytest.raises(DemoError, match="already waiting"):
         asyncio.run(subject.run(problem()))
+
+
+def test_keyboard_mash_is_refused_before_a_run_starts():
+    """An unbroken run of characters is not a problem statement. Admitted, it mints a key, runs a
+    container for a hundred seconds, and comes back with an empty reply from a model that had
+    nothing to answer."""
+    mash = "thtrheththehrthetherhtherdghddghdhfghdghe" * 30
+    with pytest.raises(DemoError, match="too long to be a word"):
+        service().as_challenge({"title": "x", "problem_statement": mash})
+
+
+def test_one_phrase_repeated_is_refused_as_filler():
+    """Long enough to pass a length check, and empty of anything to work on."""
+    filler = "Context memory length" * 40
+    with pytest.raises(DemoError, match="distinct words|repeats the same few words"):
+        service().as_challenge({"title": "x", "problem_statement": filler})
+
+
+def test_a_real_problem_statement_is_admitted():
+    """The refusal must not catch ordinary technical prose."""
+    statement = (
+        "A read-heavy service replicates a primary database into five regional read replicas. "
+        "Writes go to the primary and each replica applies the log with variable lag, so an "
+        "invalidation applied before a replica has caught up repopulates the cache with the "
+        "pre-write value and it stays stale until the entry expires. Blocking reads until the "
+        "replica catches up destroys the latency the cache exists to provide."
+    )
+    challenge = service().as_challenge({"title": "Cache staleness", "problem_statement": statement})
+    assert challenge["problem_statement"] == statement
