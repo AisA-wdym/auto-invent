@@ -270,8 +270,8 @@ def test_spend_stays_within_the_declared_ceiling(executed, season):
 
 
 def test_an_honest_laboratory_passes_all_thirteen_hard_gates(executed):
-    """The assertion that found two defects: the template not sending its declared snapshot (13.4),
-    and gate 13.9 firing on the phrase "rate faster than the maximum" (13.9).
+    """The assertion that found two defects: the template not sending its declared snapshot,
+    and gate 13.9 firing on the phrase "rate faster than the maximum".
 
     A gate is fatal, so a false positive here invalidates an honest response unappealably — which
     makes this the single most important assertion in the file."""

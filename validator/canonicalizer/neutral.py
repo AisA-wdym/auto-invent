@@ -230,11 +230,11 @@ class CanonicalPortfolio:
 
     body: Mapping[str, Any]
     removals: tuple[Removal, ...]
-    #: RCG-measured usage, substituted for the miner's claim (9.2).
+    #: RCG-measured usage, substituted for the miner's claim.
     measured_usage: Mapping[str, int] = field(default_factory=dict)
     #: Citations the validator resolved itself.
     verified_citations: tuple[Mapping[str, Any], ...] = ()
-    #: Idea indices the validator considers one lineage (18.1) — reconstructed, not accepted.
+    #: Idea indices the validator considers one lineage — reconstructed, not accepted.
     duplicate_clusters: tuple[tuple[int, ...], ...] = ()
 
     def removals_by_kind(self) -> dict[str, int]:
@@ -247,12 +247,10 @@ class CanonicalPortfolio:
 def strip_text(text: str, *, path: str = "$") -> tuple[str, list[Removal]]:
     """Canonicalise one string. Deterministic, and the pass order is fixed.
 
-    The order matters, and an earlier version had it backwards. **Markdown is flattened first**, so
-    every later pattern sees plain prose. The original reasoning — that an injection inside a code
-    fence would escape a later pass — is wrong in both directions: flattening the fence *helps* the
-    injection pattern match, and running puffery before markdown produced `****` out of
-    `**Revolutionary**`, which the markdown pattern then could not match because it requires
-    non-empty content between the asterisks. A test caught that; nothing in review would have.
+    **Markdown is flattened first**, so every later pattern sees plain prose. The reverse order
+    fails in both directions: flattening a code fence *helps* the injection pattern match, and
+    running puffery first turns `**Revolutionary**` into `****`, which the markdown pattern can no
+    longer match because it requires non-empty content between the asterisks.
 
     After flattening: judge instructions, then identity, then puffery, then quantities. Identity
     before puffery because "our world-class Claude-powered lab" needs both passes and the identity

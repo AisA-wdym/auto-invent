@@ -1,8 +1,8 @@
-"""The composed gateway, over HTTP: architecture.md 3.4, 5.4.1, 13.
+"""The composed gateway, over HTTP.
 
 Unit tests can show that each guard works when called. This shows the guards are *on the request
-path* — which is a different claim, and the one that failed in the predecessor: a lifecycle route
-returned 423 on every session because nothing opened the run, and every unit test passed.
+path*, which is a different claim: a lifecycle route can return 423 on every session because
+nothing opened the run, with every unit test still passing.
 
 So this drives the real ASGI app through a real client. The only substitution is the provider
 transport, because a test suite that spent money on every run would be a test suite nobody runs.
@@ -146,7 +146,7 @@ def llm(client: TestClient, token: str, **over) -> Any:
 
 
 # --------------------------------------------------------------------------
-# The happy path exists, which is the claim the predecessor got wrong
+# The happy path exists
 # --------------------------------------------------------------------------
 
 

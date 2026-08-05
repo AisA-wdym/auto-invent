@@ -22,7 +22,7 @@ and stop it at the right moment; here it is one call.
 **A step runs inside its window or not at all.** If a step's window has closed and the step is not
 done, the round is abandoned — loudly, by name, with the reason.
 
-Never caught up, because catching up is precisely what breaks section 7.3's three orderings. A salt
+Never caught up, because catching up is precisely what breaks the three orderings. A salt
 committed after the randomness is drawn is worse than no salt commitment: the commitment exists, it
 looks valid to every peer, and the validator could have ground it against the randomness it had
 already seen. The same holds for a pack hash committed after reveal — it is a commitment to a pack
@@ -79,7 +79,8 @@ class Step(Enum):
     The values are the ordering. `Step.SCORE > Step.EXECUTE` is meaningful.
 
     `GENERATE` covers planning, generation, filtering, committing the pack hash and storing the
-    pack, which section 21 lists as two boundaries. They are one step because 7.4 step 6 requires
+    pack, which the schedule lists as two boundaries. They are one step because the pipeline
+    requires
     the hash on chain *before* the pack reaches Redis — so there is no legal place to persist a
     generated-but-uncommitted pack, and a step recorded as done with its only copy in memory would
     be destroyed by the restart the record exists to survive.
@@ -122,7 +123,7 @@ def windows(cycle: CycleConfig) -> tuple[Window, ...]:
     it. The windows are the intervals *between* the boundaries it validates.
 
     They do not tile the round: `[pack_commit_offset, reveal_offset)` belongs to no step. That gap
-    is section 21's margin between the commitment and the reveal — the hundred blocks in which the
+    is the margin between the commitment and the reveal — the hundred blocks in which the
     pack hash is on chain and nothing else may happen. `decide` returns `Wait` there, which is
     correct: a round in the margin has nothing to do and nothing has expired.
     """

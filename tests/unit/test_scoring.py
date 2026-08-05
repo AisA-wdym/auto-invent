@@ -1,8 +1,8 @@
 """The scoring model: architecture.md 18.
 
-Most of these tests measure a *difference* rather than asserting a value, because the defects
-that matter here all produce a plausible number. A wrong ordering, a `.get(name, 0)`, a
-per-term division — each yields a score that looks like a score.
+Most of these tests measure a *difference* rather than asserting a value, because the mistakes
+that matter here all produce a plausible number. A wrong ordering, a `.get(name, 0)`, a per-term
+division — each yields a score that looks like a score.
 """
 
 from __future__ import annotations
@@ -147,9 +147,9 @@ def test_the_rank_weights_favour_the_first_idea():
 def test_a_missing_rank_forfeits_its_weight_rather_than_redistributing():
     """The miner's gap, not the validator's — so the weight is forfeit.
 
-    An earlier version redistributed here, reasoning that the duplicate collapse had already
-    removed the credit for repetition. That inverted the incentive: see the padding test above.
-    A rank with no distinct idea behind it means the challenge's `portfolio_size` was not met.
+    Redistributing here — on the reasoning that the duplicate collapse already removed the credit
+    for repetition — inverts the incentive: see the padding test above. A rank with no distinct idea
+    behind it means the challenge's `portfolio_size` was not met.
     """
     one_idea = rank_weighted([800_000], CONFIG.rank_weights_ppm)
     assert one_idea == 320_000  # 0.40 x 800000, the remaining 60% forfeit
@@ -262,7 +262,7 @@ def test_the_floor_is_applied_after_the_combination_not_before():
 
 
 # --------------------------------------------------------------------------
-# 18.4: omission versus zero, the defect worth the most money
+# Omission versus zero
 # --------------------------------------------------------------------------
 
 
@@ -357,10 +357,10 @@ def test_a_day_with_no_valid_challenges_is_refused():
 
 
 def test_a_newcomer_with_perfect_days_scores_perfectly():
-    """18.6 forbids a credibility multiplier, and the estimator switch must not become one.
+    """The protocol forbids a credibility multiplier, and the estimator switch must not become one.
 
-    The predecessor design had one, and it made a new coldkey worth almost nothing for three
-    seasons. A laboratory with three excellent days scores what those days earned.
+    Such a multiplier makes a new coldkey worth almost nothing for several seasons. A laboratory
+    with three excellent days scores what those days earned.
     """
     history = ScoreHistory(dates=["2026-08-01", "2026-08-02", "2026-08-03"], scores_ppm=[PPM] * 3)
     assert rolling_score(history, CADENCE).score_ppm == PPM

@@ -18,7 +18,7 @@ from pydantic import ConfigDict, Field, constr
 
 class BundleManifest(ProtocolModel):
     """
-    The submission unit's declaration, from architecture.md section 5.2. One complete versioned AutonomousInventionLabBundle.
+    The submission unit's declaration. One complete versioned AutonomousInventionLabBundle.
 
     Every hash here exists so that what a validator executes is provably what the miner committed. `container_digest` is a digest and never a tag: a tag is mutable, and a mutable reference means the artifact executed is not the artifact sealed.
     """
@@ -30,13 +30,13 @@ class BundleManifest(ProtocolModel):
     bundle_id: constr(pattern=r'^[0-9a-zA-Z]+/[0-9a-zA-Z._-]+$', max_length=200) = (
         Field(
             ...,
-            description='`{miner_hotkey}/{lab_name}`. Namespaced by hotkey so two miners cannot collide, and stable across versions so lineage is traceable (section 22 publishes bundle lineage and forks).',
+            description='`{miner_hotkey}/{lab_name}`. Namespaced by hotkey so two miners cannot collide, and stable across versions so lineage is traceable (disclosure publishes bundle lineage and forks).',
         )
     )
     bundle_version: constr(pattern=r'^[0-9]+\.[0-9]+\.[0-9]+$')
     round_id: constr(pattern=r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$') = Field(
         ...,
-        description='The daily round this bundle targets, as a date. The cycle is daily (section 21), so a bundle names a day rather than a season.',
+        description='The daily round this bundle targets, as a date. The cycle is daily, so a bundle names a day rather than a season.',
     )
     entrypoint: constr(min_length=1, max_length=500)
     container_digest: constr(pattern=r'^sha256:[0-9a-f]{64}$')
@@ -53,10 +53,10 @@ class BundleManifest(ProtocolModel):
     output_schema: Literal['research_portfolio_v1']
     resource_class: constr(max_length=50) | None = Field(
         None,
-        description='Requested sandbox size, from the allowed classes the owner publishes (section 3.3).',
+        description='Requested sandbox size, from the allowed classes the owner publishes.',
     )
     miner_signature: constr(min_length=1, max_length=500)
     credential_envelope_digest: constr(pattern=r'^sha256:[0-9a-f]{64}$') = Field(
         ...,
-        description='Content address of the sealed OpenRouter credential envelope (architecture.md section 5.4.1). The digest is here so the manifest commits to which envelope belongs to it; the envelope itself is a separate sealed object.\n\nSeparate rather than inline, and the separation is the control: section 6.3 publishes this manifest after execution closes, and a credential inside it would be published with it. A distinct object can be excluded by construction -- the publication path never reads it -- rather than by a filter someone must remember to keep correct.',
+        description='Content address of the sealed OpenRouter credential envelope. The digest is here so the manifest commits to which envelope belongs to it; the envelope itself is a separate sealed object.\n\nSeparate rather than inline, and the separation is the control: disclosure publishes this manifest after execution closes, and a credential inside it would be published with it. A distinct object can be excluded by construction -- the publication path never reads it -- rather than by a filter someone must remember to keep correct.',
     )

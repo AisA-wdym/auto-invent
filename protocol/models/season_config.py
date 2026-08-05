@@ -20,7 +20,7 @@ from pydantic import ConfigDict, Field, RootModel, conint, constr
 
 class Taxonomy(ProtocolModel):
     """
-    The active domain set and the per-day stratification (section 7.2). V1 is restricted to domains an LLM panel can inspect without a physical laboratory.
+    The active domain set and the per-day stratification. V1 is restricted to domains an LLM panel can inspect without a physical laboratory.
     """
 
     model_config = ConfigDict(
@@ -34,7 +34,7 @@ class Taxonomy(ProtocolModel):
     )
     excluded_domains: list[str] | None = Field(
         None,
-        description="Section 2's V1 exclusions, named rather than merely omitted, so the safety filter has a list to check against.",
+        description='The V1 exclusions, named rather than merely omitted, so the safety filter has a list to check against.',
         max_length=32,
     )
 
@@ -69,7 +69,7 @@ class Generator(ProtocolModel):
     )
     model_snapshot: constr(max_length=200) = Field(
         ...,
-        description="The immutable route to send for this generator family. Validator-side and therefore the owner's choice; miners are not pinned by the season (5.3).",
+        description="The immutable route to send for this generator family. Validator-side and therefore the owner's choice; miners are not pinned by the season.",
     )
     slots: conint(ge=1)
     critic_family: constr(max_length=50) = Field(
@@ -88,7 +88,7 @@ class Backend(Enum):
 
 class Store(ProtocolModel):
     """
-    Where generated packs live (section 7.5). Redis: write a pack once, read it many times during execution, expire it after the dedup window, and survive a restart mid-round without losing a pack whose hash is already committed.
+    Where generated packs live. Redis: write a pack once, read it many times during execution, expire it after the dedup window, and survive a restart mid-round without losing a pack whose hash is already committed.
 
     `sandbox_reachable` must be false. A laboratory that could reach the store would read the entire pack -- every problem including ones it has not been issued, and other rounds' packs. The store is the validator's; delivery to the laboratory is the runner's, as its structured input.
     """
@@ -103,7 +103,7 @@ class Store(ProtocolModel):
 
 class ChallengeGeneration(ProtocolModel):
     """
-    Section 7.4's pipeline parameters. The discrimination probe is the load-bearing one: it is what stops a validator producing problems nobody can be scored on.
+    The generation pipeline's parameters. The discrimination probe is the load-bearing one: it is what stops a validator producing problems nobody can be scored on.
     """
 
     model_config = ConfigDict(
@@ -118,17 +118,17 @@ class ChallengeGeneration(ProtocolModel):
     )
     minimum_reference_spread_ppm: conint(ge=0, le=1000000) | None = Field(
         None,
-        description='Reference labs must disagree by at least this much, or the problem does not discriminate. Section 7.4 step 5.',
+        description='Reference labs must disagree by at least this much, or the problem does not discriminate, and the discrimination probe rejects it.',
     )
     generator_model_snapshots: list[str] | None = Field(None, max_length=10)
     generators: list[Generator] = Field(
         ...,
-        description="The two generator families and how many of the day's slots each owns (architecture.md section 7.2.1). Two rather than one because a single generator has a house style: it reaches for the same problem shapes and constraint patterns, and a laboratory tuned to that style scores well without being better. With half the pack from each family, half is always foreign to whatever a miner overfitted to -- and the gap between a miner's two halves is itself the earliest signal that the challenge supply has become predictable.",
+        description="The two generator families and how many of the day's slots each owns. Two rather than one because a single generator has a house style: it reaches for the same problem shapes and constraint patterns, and a laboratory tuned to that style scores well without being better. With half the pack from each family, half is always foreign to whatever a miner overfitted to -- and the gap between a miner's two halves is itself the earliest signal that the challenge supply has become predictable.",
         min_length=2,
     )
     store: Store = Field(
         ...,
-        description="Where generated packs live (section 7.5). Redis: write a pack once, read it many times during execution, expire it after the dedup window, and survive a restart mid-round without losing a pack whose hash is already committed.\n\n`sandbox_reachable` must be false. A laboratory that could reach the store would read the entire pack -- every problem including ones it has not been issued, and other rounds' packs. The store is the validator's; delivery to the laboratory is the runner's, as its structured input.",
+        description="Where generated packs live. Redis: write a pack once, read it many times during execution, expire it after the dedup window, and survive a restart mid-round without losing a pack whose hash is already committed.\n\n`sandbox_reachable` must be false. A laboratory that could reach the store would read the entire pack -- every problem including ones it has not been issued, and other rounds' packs. The store is the validator's; delivery to the laboratory is the runner's, as its structured input.",
     )
     minimum_degradation_gap_ppm: conint(ge=1, le=1000000) = Field(
         ...,
@@ -146,7 +146,7 @@ class ChallengeGeneration(ProtocolModel):
 
 class Funnel(ProtocolModel):
     """
-    Section 17's evaluation funnel. Every valid response gets the cheap anchored pointwise screen; only the cohort gets the expensive pairwise tournament. These numbers decide both what a round costs the validator and how much incumbency the ranking permits, which is why they are season configuration rather than constants: cohort_random and cohort_new exist so that being outside the top cannot become self-perpetuating (17.2).
+    The evaluation funnel. Every valid response gets the cheap anchored pointwise screen; only the cohort gets the expensive pairwise tournament. These numbers decide both what a round costs the validator and how much incumbency the ranking permits, which is why they are season configuration rather than constants: cohort_random and cohort_new exist so that being outside the top cannot become self-perpetuating.
     """
 
     model_config = ConfigDict(
@@ -157,7 +157,7 @@ class Funnel(ProtocolModel):
     )
     cohort_random: conint(ge=0) = Field(
         ...,
-        description="Randomly drawn from the rest, seeded from the day's seed so it is reproducible and unpredictable in advance. Prevents incumbent lock-in (17.2).",
+        description="Randomly drawn from the rest, seeded from the day's seed so it is reproducible and unpredictable in advance. Prevents incumbent lock-in.",
     )
     cohort_new: conint(ge=0) = Field(
         ...,
@@ -165,7 +165,7 @@ class Funnel(ProtocolModel):
     )
     swiss_rounds: conint(ge=1) = Field(
         ...,
-        description='Pairing rounds per challenge (17.3). Each is one pair of judged comparisons per pairing, in both presentation orders.',
+        description='Pairing rounds per challenge. Each is one pair of judged comparisons per pairing, in both presentation orders.',
     )
     prior_art_ideas_per_portfolio: conint(ge=0) = Field(
         ...,
@@ -195,7 +195,7 @@ class Judge(ProtocolModel):
 
 class Cycle(ProtocolModel):
     """
-    Section 21's daily schedule, as block offsets. Expressed in blocks because section 21 requires the cycle be block-aligned rather than dependent only on wall clock: a validator whose clock runs fast would otherwise commit its challenge pack against a different randomness than its peers.
+    The round schedule, as block offsets. Expressed in blocks because the cycle is block-aligned rather than dependent only on wall clock: a validator whose clock runs fast would otherwise commit its challenge pack against a different randomness than its peers.
     """
 
     model_config = ConfigDict(
@@ -203,7 +203,7 @@ class Cycle(ProtocolModel):
     )
     blocks_per_day: conint(ge=1)
     submission_close_offset: int = Field(
-        ..., description='Negative offsets precede T0. Section 21: T-2h.'
+        ..., description='Negative offsets precede T0. T-2h.'
     )
     salt_commit_offset: int = Field(..., description='T-90m.')
     randomness_offset: int = Field(
@@ -257,11 +257,11 @@ class MinerPricing(ProtocolModel):
     )
     maximum_search_calls: conint(ge=0) = Field(
         ...,
-        description='Search-call ceiling for one challenge. Counts against maximum_rcc as well (5.3).',
+        description='Search-call ceiling for one challenge. Counts against maximum_rcc as well.',
     )
     maximum_wall_time_seconds: conint(ge=1) = Field(
         ...,
-        description='Wall-clock ceiling for one challenge (13.7), measured by the runner. A single frontier-model synthesis was measured at 214 seconds, so a laboratory making thirty calls needs either this much room or the parallelism its model manifest declares.',
+        description='Wall-clock ceiling for one challenge, measured by the runner. A single frontier-model synthesis was measured at 214 seconds, so a laboratory making thirty calls needs either this much room or the parallelism its model manifest declares.',
     )
 
 
@@ -276,7 +276,7 @@ class Providers(ProtocolModel):
     """
     One provider surface, two accounts. Every model call in the subnet goes through OpenRouter; miners spend their own key and validators spend theirs.
 
-    The separation is by *account*, not by provider, and section 3.4.4 explains why that now has to be enforced in code: with one provider a swapped key succeeds and silently bills the wrong party, where two providers would have failed on the first request.
+    The separation is by *account*, not by provider, and it has to be enforced in code: with one provider a swapped key succeeds and silently bills the wrong party, where two providers would have failed on the first request.
     """
 
     model_config = ConfigDict(
@@ -289,14 +289,14 @@ class Providers(ProtocolModel):
     )
     validator_purposes: list[ValidatorPurpose] = Field(
         ...,
-        description="What the validator's own key may be spent on. Purpose selects the credential (section 3.4.4 point 2), so this list is what a research call is checked against and refused by -- not documentation.",
+        description="What the validator's own key may be spent on. Purpose selects the credential, so this list is what a research call is checked against and refused by -- not documentation.",
         min_length=1,
     )
 
 
 class Disclosure(ProtocolModel):
     """
-    Section 22. What is published after execution closes, and what stays sealed.
+    What is published after execution closes, and what stays sealed.
     """
 
     model_config = ConfigDict(
@@ -305,7 +305,7 @@ class Disclosure(ProtocolModel):
     publish_after_execution_close: list[str] | None = Field(None, max_length=40)
     judge_prompt_sealed_until_epoch_end: bool | None = Field(
         None,
-        description='Section 22: the detailed judge prompt may remain sealed to reduce immediate prompt overfitting. Its hash is committed at the start regardless, so it cannot be changed while sealed.',
+        description='The detailed judge prompt may remain sealed to reduce immediate prompt overfitting. Its hash is committed at the start regardless, so it cannot be changed while sealed.',
     )
 
 
@@ -317,14 +317,14 @@ class Signing(ProtocolModel):
     owner_hotkey: constr(max_length=100)
     ineligible_uids: list[conint(ge=0)] | None = Field(
         None,
-        description='Section 23: owner-linked miner UIDs should be ineligible. Declared here so the exclusion is public and auditable rather than an operational habit.',
+        description='Owner-linked miner UIDs are ineligible. Declared here so the exclusion is public and auditable rather than an operational habit.',
         max_length=256,
     )
 
 
 class CriterionWeightsPpm(ProtocolModel):
     """
-    Section 18.2. Must sum to 1000000.
+    Must sum to 1000000.
     """
 
     model_config = ConfigDict(
@@ -345,33 +345,30 @@ class Scoring(ProtocolModel):
         extra='forbid',
     )
     pairwise_weight_ppm: conint(ge=0, le=1000000) = Field(
-        ..., description='Section 18.3, 0.75. Pairwise is the primary signal.'
+        ..., description='0.75. Pairwise is the primary signal.'
     )
     pointwise_weight_ppm: conint(ge=0, le=1000000) = Field(
         ...,
         description='0.25. Diagnostic anchoring: it reveals a weak field whose relative winner is still poor.',
     )
     mechanism_floor_ppm: conint(ge=0, le=1000000) = Field(
-        ...,
-        description='Section 18.4, 0.40. Below this, value and originality are capped.',
+        ..., description='0.40. Below this, value and originality are capped.'
     )
     capped_on_weak_mechanism_ppm: conint(ge=0, le=1000000) = Field(
         ..., description='0.50. An idea cannot score highly merely by sounding unusual.'
     )
-    daily_mean_weight_ppm: conint(ge=0, le=1000000) = Field(
-        ..., description='Section 18.5, 0.70.'
-    )
+    daily_mean_weight_ppm: conint(ge=0, le=1000000) = Field(..., description='0.70.')
     daily_q25_weight_ppm: conint(ge=0, le=1000000) = Field(
         ...,
         description='0.30. The lower quartile penalises a laboratory brilliant on one problem and failing the rest.',
     )
-    rolling_short_days: conint(ge=1) = Field(..., description='Section 18.6, 7.')
+    rolling_short_days: conint(ge=1) = Field(..., description='7.')
     rolling_long_days: conint(ge=1) = Field(..., description='30.')
     rolling_short_weight_ppm: conint(ge=0, le=1000000) = Field(..., description='0.60.')
     rolling_long_weight_ppm: conint(ge=0, le=1000000) = Field(..., description='0.40.')
     minimum_days_for_median: conint(ge=1) = Field(
         ...,
-        description='Below this many valid days, the rolling score is the plain mean. Section 18.6 states there is no credibility multiplier suppressing new miners, so this must not act as one: it selects an estimator, it does not scale a score.',
+        description='Below this many valid days, the rolling score is the plain mean. There is no credibility multiplier suppressing new miners, so this must not act as one: it selects an estimator, it does not scale a score.',
     )
 
 
@@ -391,8 +388,7 @@ class Judging(ProtocolModel):
         extra='forbid',
     )
     minimum_families: conint(ge=3) = Field(
-        ...,
-        description='Section 16.1: at least three. Two snapshots of one family are one family.',
+        ..., description='At least three. Two snapshots of one family are one family.'
     )
     family_cap_ppm: conint(ge=0, le=1000000) = Field(
         ...,
@@ -400,11 +396,10 @@ class Judging(ProtocolModel):
     )
     panels: list[Panel] = Field(..., min_length=1)
     degradation_accuracy_floor_ppm: conint(ge=0, le=1000000) = Field(
-        ...,
-        description='Section 19: 950000 = 95%. Below this a judge is removed from the panel.',
+        ..., description='950000 = 95%. Below this a judge is removed from the panel.'
     )
     order_swap_inconsistency_ceiling_ppm: conint(ge=0, le=1000000) = Field(
-        ..., description='Section 27: 75000 = 7.5%.'
+        ..., description='75000 = 7.5%.'
     )
     schema_validity_floor_ppm: conint(ge=0, le=1000000) = Field(
         ..., description='990000 = 99%.'
@@ -414,26 +409,25 @@ class Judging(ProtocolModel):
 
 class WeightAllocation(ProtocolModel):
     """
-    Section 20. Softmax rather than proportional, so the gap between a strong and a mediocre laboratory matters more than their ratio.
+    Softmax rather than proportional, so the gap between a strong and a mediocre laboratory matters more than their ratio.
     """
 
     model_config = ConfigDict(
         extra='forbid',
     )
     temperature_ppm: conint(ge=0, le=1000000) = Field(
-        ..., description='Section 20.2: tau in 0.08-0.12, so 80000-120000.'
+        ..., description='Tau in 0.08-0.12, so 80000-120000.'
     )
     maximum_weight_ppm: conint(ge=0, le=1000000) = Field(
         ...,
-        description='Section 20.3: 150000-200000. Overflow is redistributed, which encourages multiple lab architectures over one permanent winner.',
+        description='150000-200000. Overflow is redistributed, which encourages multiple lab architectures over one permanent winner.',
     )
     minimum_valid_challenges: conint(ge=1) = Field(
-        ...,
-        description='Section 20.1. Being best among a handful of results is not qualification.',
+        ..., description='Being best among a handful of results is not qualification.'
     )
     burn_uid: conint(ge=0) = Field(
         ...,
-        description='Section 20.4: if no miner beats the reference floor, 100% of weight goes here. Paying nobody is a valid outcome and must be expressible.',
+        description='If no miner beats the reference floor, 100% of weight goes here. Paying nobody is a valid outcome and must be expressible.',
     )
     reference_floor_lab: constr(max_length=50) | None = Field(
         None,
@@ -457,9 +451,9 @@ class ReferenceLab(ProtocolModel):
 
 class SeasonConfig(ProtocolModel):
     """
-    The public protocol the owner defines (architecture.md section 3.3): taxonomy, resource classes, hard-gate rules, scoring formula, judge requirements, disclosure rules and version pins. Signed, hash-anchored on chain, and the only artifact a validator is permitted to derive rules from.
+    The public protocol the owner defines: taxonomy, resource classes, hard-gate rules, scoring formula, judge requirements, disclosure rules and version pins. Signed, hash-anchored on chain, and the only artifact a validator is permitted to derive rules from.
 
-    The owner defines this and nothing else. It contains no challenges: section 3.3 is explicit that the owner does not create the daily validation questions and does not grade answers. Anything resembling problem content in this file would reintroduce the owner as a trusted party.
+    The owner defines this and nothing else. It contains no challenges: the owner does not create the validation questions and does not grade answers. Anything resembling problem content in this file would reintroduce the owner as a trusted party.
 
     ## Every ratio is an integer in parts-per-million
 
@@ -482,47 +476,47 @@ class SeasonConfig(ProtocolModel):
     sdk_pin: constr(max_length=50)
     taxonomy: Taxonomy = Field(
         ...,
-        description='The active domain set and the per-day stratification (section 7.2). V1 is restricted to domains an LLM panel can inspect without a physical laboratory.',
+        description='The active domain set and the per-day stratification. V1 is restricted to domains an LLM panel can inspect without a physical laboratory.',
     )
     resource_classes: list[ResourceClass] = Field(..., min_length=1)
     challenge_generation: ChallengeGeneration = Field(
         ...,
-        description="Section 7.4's pipeline parameters. The discrimination probe is the load-bearing one: it is what stops a validator producing problems nobody can be scored on.",
+        description="The generation pipeline's parameters. The discrimination probe is the load-bearing one: it is what stops a validator producing problems nobody can be scored on.",
     )
     criterion_weights_ppm: CriterionWeightsPpm = Field(
-        ..., description='Section 18.2. Must sum to 1000000.'
+        ..., description='Must sum to 1000000.'
     )
     rank_weights_ppm: list[conint(ge=0, le=1000000)] = Field(
         ...,
-        description="Section 18.1's per-idea weighting: 0.40, 0.25, 0.15, 0.12, 0.08. Ordered by rank, and must sum to 1000000. Length fixes the scored portfolio size.",
+        description='Per-idea weighting: 0.40, 0.25, 0.15, 0.12, 0.08. Ordered by rank, and must sum to 1000000. Length fixes the scored portfolio size.',
         max_length=10,
         min_length=1,
     )
     scoring: Scoring
     funnel: Funnel = Field(
         ...,
-        description="Section 17's evaluation funnel. Every valid response gets the cheap anchored pointwise screen; only the cohort gets the expensive pairwise tournament. These numbers decide both what a round costs the validator and how much incumbency the ranking permits, which is why they are season configuration rather than constants: cohort_random and cohort_new exist so that being outside the top cannot become self-perpetuating (17.2).",
+        description='The evaluation funnel. Every valid response gets the cheap anchored pointwise screen; only the cohort gets the expensive pairwise tournament. These numbers decide both what a round costs the validator and how much incumbency the ranking permits, which is why they are season configuration rather than constants: cohort_random and cohort_new exist so that being outside the top cannot become self-perpetuating.',
     )
     judging: Judging
     weight_allocation: WeightAllocation = Field(
         ...,
-        description='Section 20. Softmax rather than proportional, so the gap between a strong and a mediocre laboratory matters more than their ratio.',
+        description='Softmax rather than proportional, so the gap between a strong and a mediocre laboratory matters more than their ratio.',
     )
     cycle: Cycle = Field(
         ...,
-        description="Section 21's daily schedule, as block offsets. Expressed in blocks because section 21 requires the cycle be block-aligned rather than dependent only on wall clock: a validator whose clock runs fast would otherwise commit its challenge pack against a different randomness than its peers.",
+        description='The round schedule, as block offsets. Expressed in blocks because the cycle is block-aligned rather than dependent only on wall clock: a validator whose clock runs fast would otherwise commit its challenge pack against a different randomness than its peers.',
     )
     reference_labs: list[ReferenceLab] = Field(
         ...,
-        description="Configurations of the single reference template (section 25), by digest. The owner ships one miner template rather than four architectures; these are variations of it — different models, different temperatures — and they exist for two reasons. The first entry is the qualification floor of 20.1, pinned because a floor that could change without a rules change would silently move every miner's eligibility. The rest give 7.4 step 5's discrimination probe something to measure spread across: a probe with one configuration cannot tell an easy problem from a hard one, because condition 1 asks whether every reference produced essentially the same answer.",
+        description="Configurations of the single reference template, by digest. The owner ships one miner template rather than four architectures; these are variations of it — different models, different temperatures — and they exist for two reasons. The first entry is the qualification floor of 20.1, pinned because a floor that could change without a rules change would silently move every miner's eligibility. The rest give 7.4 step 5's discrimination probe something to measure spread across: a probe with one configuration cannot tell an easy problem from a hard one, because condition 1 asks whether every reference produced essentially the same answer.",
         min_length=2,
     )
     providers: Providers | None = Field(
         None,
-        description='One provider surface, two accounts. Every model call in the subnet goes through OpenRouter; miners spend their own key and validators spend theirs.\n\nThe separation is by *account*, not by provider, and section 3.4.4 explains why that now has to be enforced in code: with one provider a swapped key succeeds and silently bills the wrong party, where two providers would have failed on the first request.',
+        description='One provider surface, two accounts. Every model call in the subnet goes through OpenRouter; miners spend their own key and validators spend theirs.\n\nThe separation is by *account*, not by provider, and it has to be enforced in code: with one provider a swapped key succeeds and silently bills the wrong party, where two providers would have failed on the first request.',
     )
     disclosure: Disclosure | None = Field(
         None,
-        description='Section 22. What is published after execution closes, and what stays sealed.',
+        description='What is published after execution closes, and what stays sealed.',
     )
     signing: Signing

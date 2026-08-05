@@ -37,7 +37,7 @@ class PortfolioMap(ProtocolModel):
 
 class SelfSelection(ProtocolModel):
     """
-    Why the laboratory ranked its first idea first. Scored by the Self-Selection Judge (section 16.2) against which idea the panel would have picked.
+    Why the laboratory ranked its first idea first. Scored by the Self-Selection Judge against which idea the panel would have picked.
     """
 
     model_config = ConfigDict(
@@ -49,7 +49,7 @@ class SelfSelection(ProtocolModel):
 
 class ResourceUsageClaim(ProtocolModel):
     """
-    The laboratory's own account of what it spent. Recorded but never trusted: section 9.2 states validators replace self-reported usage with gateway-measured usage. Kept because a claim that disagrees with measurement is itself evidence.
+    The laboratory's own account of what it spent. Recorded but never trusted: validators replace self-reported usage with gateway-measured usage. Kept because a claim that disagrees with measurement is itself evidence.
     """
 
     model_config = ConfigDict(
@@ -62,7 +62,7 @@ class ResourceUsageClaim(ProtocolModel):
 
 class Mechanism(ProtocolModel):
     """
-    Why the idea works. A mechanism below the section 18.4 floor caps both value and originality at 0.50 — an idea cannot score highly merely by sounding unusual.
+    Why the idea works. A mechanism below the mechanism floor caps both value and originality at 0.50 — an idea cannot score highly merely by sounding unusual.
     """
 
     model_config = ConfigDict(
@@ -115,11 +115,11 @@ class Idea(ProtocolModel):
     core_invention: constr(min_length=50, max_length=12000)
     mechanism: Mechanism = Field(
         ...,
-        description='Why the idea works. A mechanism below the section 18.4 floor caps both value and originality at 0.50 — an idea cannot score highly merely by sounding unusual.',
+        description='Why the idea works. A mechanism below the mechanism floor caps both value and originality at 0.50 — an idea cannot score highly merely by sounding unusual.',
     )
     nearest_prior_art: list[NearestPriorArtItem] | None = Field(
         None,
-        description="The laboratory's own prior-art comparison. Verified independently (section 15): a fabricated or inaccessible citation is a hard-gate failure, not a scoring deduction.",
+        description="The laboratory's own prior-art comparison. Verified independently: a fabricated or inaccessible citation is a hard-gate failure, not a scoring deduction.",
         max_length=20,
     )
     why_non_obvious: constr(min_length=20, max_length=8000)
@@ -144,9 +144,9 @@ class Idea(ProtocolModel):
 
 class ResearchPortfolio(ProtocolModel):
     """
-    What a laboratory returns: a ranked Top-N invention portfolio, from architecture.md section 9.2. Schema name `research_portfolio_v1`.
+    What a laboratory returns: a ranked Top-N invention portfolio. Schema name `research_portfolio_v1`.
 
-    Two fields are numeric probabilities the miner supplies (`estimated_probability_of_value`, `self_selection.confidence`). They are permitted here because this schema describes the raw artifact as it arrives, and the raw artifact is hashed as *received bytes* rather than as a re-encoded object. The canonicalizer (section 14) converts them to integer fixed-point before anything scores or hashes a derived form, so no float ever reaches an arithmetic path that two runs must agree on.
+    Two fields are numeric probabilities the miner supplies (`estimated_probability_of_value`, `self_selection.confidence`). They are permitted here because this schema describes the raw artifact as it arrives, and the raw artifact is hashed as *received bytes* rather than as a re-encoded object. The canonicalizer converts them to integer fixed-point before anything scores or hashes a derived form, so no float ever reaches an arithmetic path that two runs must agree on.
     """
 
     model_config = ConfigDict(
@@ -161,9 +161,9 @@ class ResearchPortfolio(ProtocolModel):
     )
     self_selection: SelfSelection = Field(
         ...,
-        description='Why the laboratory ranked its first idea first. Scored by the Self-Selection Judge (section 16.2) against which idea the panel would have picked.',
+        description='Why the laboratory ranked its first idea first. Scored by the Self-Selection Judge against which idea the panel would have picked.',
     )
     resource_usage_claim: ResourceUsageClaim | None = Field(
         None,
-        description="The laboratory's own account of what it spent. Recorded but never trusted: section 9.2 states validators replace self-reported usage with gateway-measured usage. Kept because a claim that disagrees with measurement is itself evidence.",
+        description="The laboratory's own account of what it spent. Recorded but never trusted: validators replace self-reported usage with gateway-measured usage. Kept because a claim that disagrees with measurement is itself evidence.",
     )

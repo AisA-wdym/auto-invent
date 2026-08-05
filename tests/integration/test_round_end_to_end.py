@@ -258,11 +258,11 @@ def test_an_image_that_is_not_the_committed_one_is_refused(bundle, serve, tmp_pa
     """A miner could otherwise commit one `container_digest` and ship another, and every control
     downstream would faithfully run bytes nothing on chain attests to.
 
-    This test found a second defect on its first run. The refusal used to `docker image rm
-    --force` what it had loaded — and `docker load` of an image already in the daemon is a no-op
-    returning the existing reference, so the removal deleted an image that was there for another
-    reason. It deleted the reference laboratory's own image: a miner could ship a copy of the image
-    that sets the qualification floor with a deliberately wrong manifest digest, and delete it.
+    The refusal must not `docker image rm --force` what it loaded. `docker load` of an image
+    already in the daemon is a no-op returning the existing reference, so removing it deletes an
+    image that was there for another reason — including the reference laboratory's own. A miner
+    could ship a copy of the image that sets the qualification floor with a deliberately wrong
+    manifest digest, and delete it.
     """
     work = pathlib.Path(tmp_path) / "wrong-image"
     work.mkdir()
@@ -310,6 +310,6 @@ def test_an_image_that_is_not_the_committed_one_is_refused(bundle, serve, tmp_pa
     )
     assert not prepared.ready
     assert "not the committed" in prepared.refused[0].reason
-    # The image the archive actually contained is still in the daemon. Removing it is what the
-    # refusal used to do, and it is a denial of service against whoever legitimately owns it.
+    # The image the archive actually contained is still in the daemon. Removing it on refusal
+    # would be a denial of service against whoever legitimately owns it.
     assert _image_id(REFERENCE_IMAGE) == bundle["image_id"]

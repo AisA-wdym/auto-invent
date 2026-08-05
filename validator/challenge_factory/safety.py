@@ -10,7 +10,7 @@ measurement.
 
 **Should not be produced here.** Weapons, malware and exploits. This one is not about
 evaluability — a language model can assess an exploit design perfectly well. It is that the
-subnet's output is *published* (6.3), so a portfolio of five ranked exploit designs becomes a
+subnet's output is *published*, so a portfolio of five ranked exploit designs becomes a
 public document with the subnet's name on it.
 
 The second reason is why this filter is separate from the linter rather than another of its

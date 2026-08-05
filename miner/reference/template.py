@@ -28,7 +28,7 @@ obvious things, not by discovering them.
 
 ## Why it searches
 
-`/v1/search` is metered against the same ceiling as inference (5.3), and gate 13.8 resolves every
+`/v1/search` is metered against the same ceiling as inference, and gate 13.8 resolves every
 URL a portfolio cites. A laboratory that cites without searching either fabricates or recalls, and
 both fail — recall is worse, because it is confident. The survey stage exists so that "the nearest
 prior art is X" is a statement about something that was actually retrieved.
@@ -236,7 +236,7 @@ def build_prompt(challenge: dict[str, Any], *, survey: str = "", directions: str
 def _declared_model() -> tuple[str, str]:
     """The primary model from this bundle's `model_manifest.json`, as (slug, snapshot).
 
-    The manifest is the declaration the validator checks against (5.3), so the laboratory calls what
+    The manifest is the declaration the validator checks against, so the laboratory calls what
     it declared rather than what an environment variable happens to say. `AIL_MODEL_SLUG` still
     overrides, for local experimentation — but it overrides *both* fields, so an override cannot
     produce the slug/snapshot mismatch that gate 13.4 exists to catch.
@@ -254,7 +254,7 @@ def _declared_model() -> tuple[str, str]:
         # gate 13.3 — so failing here, before spending anything, is both cheaper and clearer.
         raise SystemExit(
             f"cannot read a declared model from {manifest_path}: {error}. Every externally invoked "
-            "model must be declared before submission closes (5.3), and calling an undeclared one "
+            "model must be declared before submission closes, and calling an undeclared one "
             "invalidates the response under gate 13.3."
         ) from error
     primary = models[0]
@@ -362,7 +362,7 @@ retrieved, say which one.
 
 
 class _Rcg:
-    """The laboratory's only peer. Every call is metered and receipted (3.4).
+    """The laboratory's only peer. Every call is metered and receipted.
 
     A small class rather than free functions so the endpoint, token and challenge id are held once.
     A laboratory that had to thread them through every call would eventually thread the wrong
@@ -558,17 +558,16 @@ def run() -> int:
 
     Reads 9.1's standard input, runs the four stages through the RCG with the session token, writes
     9.2's portfolio to `/output`. No credential: the token authorises the RCG to spend on this run's
-    behalf and authorises nothing else (5.4.1).
+    behalf and authorises nothing else.
     """
     challenge_path = os.environ.get("AIL_CHALLENGE_PATH", "/input/challenge.json")
     output_dir = os.environ.get("AIL_OUTPUT_DIR", "/output")
     endpoint = os.environ.get("AIL_RCG_ENDPOINT", "")
     token = os.environ.get("AIL_SESSION_TOKEN", "")
     # Read from the bundle's own manifest rather than hardcoded, and *both* fields are sent.
-    # Sending the slug without the snapshot is what an earlier version did, and it failed gate 13.4
-    # for the reference laboratory: the receipt recorded an empty revision while the manifest
-    # declared one, which reads as a model-revision mismatch. A qualification floor that fails a
-    # hard gate is a floor of zero, which every miner clears without doing anything.
+    # Sending the slug without the snapshot fails gate 13.4: the receipt records an empty revision
+    # while the manifest declares one, which reads as a model-revision mismatch. A qualification
+    # floor that fails a hard gate is a floor of zero, which every miner clears without working.
     model, snapshot = _declared_model()
 
     if not endpoint or not token:
@@ -703,10 +702,9 @@ def _vendored_lab() -> str:
     `sys`, `urllib` — so a verbatim copy runs inside the miner's container with nothing installed,
     and it cannot drift from the implementation it is supposed to be a copy of.
 
-    The alternative, which shipped once, was to rebuild the file from `repr()`'d constants and
-    hand-joined function bodies. That produced a syntax error nobody saw, because the only thing
-    that would have caught it is running the scaffold — which is exactly what the scaffold exists
-    to guarantee works.
+    The alternative — rebuilding the file from `repr()`'d constants and hand-joined function
+    bodies — can emit a file that does not parse, and the only thing that catches that is running
+    the scaffold, which is exactly what the scaffold exists to guarantee works.
     """
     source = pathlib.Path(__file__).read_text()
     cut = source.index("def _vendored_lab()")
@@ -714,7 +712,7 @@ def _vendored_lab() -> str:
         '"""Reference A, vendored into your bundle so it runs with nothing installed.\n\n'
         "Copied rather than imported on purpose: 6.1 fixes your bundle at the deadline, and an\n"
         "import of a moving package is a dependency that can change after submission.\n\n"
-        "Edit freely. Beating this laboratory is what earns emission (20.1) — a bundle that only\n"
+        "Edit freely. Beating this laboratory is what earns emission — a bundle that only\n"
         "runs it unchanged scores at the qualification floor and is paid nothing.\n"
         '"""\n\n'
     )
@@ -826,15 +824,14 @@ if __name__ == "__main__":
     sys.exit(run())
 ''',
     # `src/lab.py` is not written here. It is derived from this module's own source by
-    # `_vendored_lab()` — see `scaffold()`. The first version hand-assembled it from repr'd
-    # constants and joined function lines, and shipped a file with a syntax error: the module
-    # docstring landed inside `build_prompt`. Nothing ran it, so nothing caught it, and the
-    # scaffold's whole purpose is to run on the first invocation.
+    # `_vendored_lab()` — see `scaffold()`. Assembling it from constants and joined function lines
+    # instead risks emitting a file that does not parse, and the scaffold's whole purpose is to run
+    # on the first invocation.
     "README.md": """\
 # My invention laboratory
 
 Reference A: one frontier model, one carefully structured request. This is the **qualification
-floor** (architecture.md 20.1) — a bundle that runs it unchanged scores at the floor and is paid
+floor** — a bundle that runs it unchanged scores at the floor and is paid
 nothing. Emission is earned by beating it.
 
 ## Build and check
@@ -854,7 +851,7 @@ The four reference architectures in the subnet repository show what beating this
 independent idea islands, a planner–researcher–critic loop, and an evolutionary lab. All of them
 spend the same RCC ceiling — what differs is how they spend it.
 
-Your credential never enters this bundle. It travels in a separate sealed envelope (5.4.1), because
-the bundle itself is published after execution closes (6.3).
+Your credential never enters this bundle. It travels in a separate sealed envelope, because
+the bundle itself is published after execution closes.
 """,
 }

@@ -9,7 +9,7 @@ the other.
 The model: each laboratory has a latent strength, and the probability that A beats B is
 `s_A / (s_A + s_B)`. Fitting means finding the strengths that best explain the verdicts
 observed. A laboratory that beat strong opponents scores above one that beat weak ones, which
-is exactly what a Swiss tournament (17.3) needs — since under Swiss pairing nobody faces the
+is exactly what a Swiss tournament needs — since under Swiss pairing nobody faces the
 same field.
 
 ## Why the fit is iterative and why that is fine here

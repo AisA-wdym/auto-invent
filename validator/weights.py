@@ -76,7 +76,7 @@ class WeightsConfig:
         if self.temperature_ppm <= 0:
             raise WeightsError(
                 "temperature must be positive: at zero the softmax becomes winner-take-all, "
-                "which section 20.3's cap exists to prevent"
+                "which the per-miner cap exists to prevent"
             )
         if not 0 < self.maximum_weight_ppm <= PPM:
             raise WeightsError(f"maximum weight {self.maximum_weight_ppm} is outside (0, {PPM}]")
@@ -162,7 +162,8 @@ def _softmax_ppm(scores: Mapping[int, int], temperature_ppm: int) -> dict[int, i
     `nan` weights.
 
     Iterates in sorted uid order. Floating-point addition is not associative, so summing the
-    denominator in dict order would make the vector depend on insertion order — and section 27
+    denominator in dict order would make the vector depend on insertion order — and rerun
+    correlation
     measures same-bundle rerun correlation, which that would break.
     """
     ordered = sorted(scores)
@@ -191,7 +192,7 @@ def _effective_cap(declared_ppm: int, qualifiers: int) -> int:
 
     So the applied cap is `max(declared, PPM / N)` — the tightest value the field can actually
     absorb. For six or more qualifiers that is the declared cap and nothing changes. Below
-    six it relaxes, which is the honest reading of section 20.3: the cap is stated as a
+    six it relaxes, which is the honest reading of the rule: the cap is stated as a
     *concentration* control, and concentration is only meaningful relative to a field. A small
     field's protection is the qualification floor, not a ceiling it cannot satisfy.
 
@@ -228,7 +229,7 @@ def _effective_cap(declared_ppm: int, qualifiers: int) -> int:
 def _cap_and_redistribute(
     weights_ppm: Mapping[int, int], cap_ppm: int
 ) -> tuple[dict[int, int], tuple[int, ...]]:
-    """Hold every laboratory at or below the cap, redistributing the overflow (20.3).
+    """Hold every laboratory at or below the cap, redistributing the overflow.
 
     Iterated rather than single-pass: handing one laboratory's overflow to the others can push a
     second over the cap, and one pass would leave it there. Bounded by the number of
@@ -304,7 +305,7 @@ def allocate(
         # that competing architectures add value, and emitting anyway would pay for that.
         _log.warning(
             "no laboratory exceeds the reference floor %d; burning 100%% of emission. "
-            "Being best among weak miners is not enough (section 20.1).",
+            "Being best among weak miners is not enough.",
             reference_floor_ppm,
         )
         return Allocation(

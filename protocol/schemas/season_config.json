@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://auto-invent.ai/schemas/season_config.json",
   "title": "SeasonConfig",
-  "description": "The public protocol the owner defines (architecture.md section 3.3): taxonomy, resource classes, hard-gate rules, scoring formula, judge requirements, disclosure rules and version pins. Signed, hash-anchored on chain, and the only artifact a validator is permitted to derive rules from.\n\nThe owner defines this and nothing else. It contains no challenges: section 3.3 is explicit that the owner does not create the daily validation questions and does not grade answers. Anything resembling problem content in this file would reintroduce the owner as a trusted party.\n\n## Every ratio is an integer in parts-per-million\n\nNo field in this schema is typed `number`. A float serialises differently on two hosts, and this document is hashed and anchored \u2014 so a decimal here makes the anchor comparison fail for a reason nobody can locate. Writing ppm integers in the schema itself removes the conversion layer entirely, rather than converting decimals at load and hoping every reader converts the same way. The cost is readability: 250000 rather than 0.25. Each description states the decimal it means.",
+  "description": "The public protocol the owner defines: taxonomy, resource classes, hard-gate rules, scoring formula, judge requirements, disclosure rules and version pins. Signed, hash-anchored on chain, and the only artifact a validator is permitted to derive rules from.\n\nThe owner defines this and nothing else. It contains no challenges: the owner does not create the validation questions and does not grade answers. Anything resembling problem content in this file would reintroduce the owner as a trusted party.\n\n## Every ratio is an integer in parts-per-million\n\nNo field in this schema is typed `number`. A float serialises differently on two hosts, and this document is hashed and anchored \u2014 so a decimal here makes the anchor comparison fail for a reason nobody can locate. Writing ppm integers in the schema itself removes the conversion layer entirely, rather than converting decimals at load and hoping every reader converts the same way. The cost is readability: 250000 rather than 0.25. Each description states the decimal it means.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -49,7 +49,7 @@
       "maxLength": 50
     },
     "taxonomy": {
-      "description": "The active domain set and the per-day stratification (section 7.2). V1 is restricted to domains an LLM panel can inspect without a physical laboratory.",
+      "description": "The active domain set and the per-day stratification. V1 is restricted to domains an LLM panel can inspect without a physical laboratory.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -80,7 +80,7 @@
           }
         },
         "excluded_domains": {
-          "description": "Section 2's V1 exclusions, named rather than merely omitted, so the safety filter has a list to check against.",
+          "description": "The V1 exclusions, named rather than merely omitted, so the safety filter has a list to check against.",
           "type": "array",
           "items": {
             "type": "string"
@@ -126,7 +126,7 @@
       }
     },
     "challenge_generation": {
-      "description": "Section 7.4's pipeline parameters. The discrimination probe is the load-bearing one: it is what stops a validator producing problems nobody can be scored on.",
+      "description": "The generation pipeline's parameters. The discrimination probe is the load-bearing one: it is what stops a validator producing problems nobody can be scored on.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -161,7 +161,7 @@
           "maximum": 1000000
         },
         "minimum_reference_spread_ppm": {
-          "description": "Reference labs must disagree by at least this much, or the problem does not discriminate. Section 7.4 step 5.",
+          "description": "Reference labs must disagree by at least this much, or the problem does not discriminate, and the discrimination probe rejects it.",
           "type": "integer",
           "minimum": 0,
           "maximum": 1000000
@@ -174,7 +174,7 @@
           "maxItems": 10
         },
         "generators": {
-          "description": "The two generator families and how many of the day's slots each owns (architecture.md section 7.2.1). Two rather than one because a single generator has a house style: it reaches for the same problem shapes and constraint patterns, and a laboratory tuned to that style scores well without being better. With half the pack from each family, half is always foreign to whatever a miner overfitted to -- and the gap between a miner's two halves is itself the earliest signal that the challenge supply has become predictable.",
+          "description": "The two generator families and how many of the day's slots each owns. Two rather than one because a single generator has a house style: it reaches for the same problem shapes and constraint patterns, and a laboratory tuned to that style scores well without being better. With half the pack from each family, half is always foreign to whatever a miner overfitted to -- and the gap between a miner's two halves is itself the earliest signal that the challenge supply has become predictable.",
           "type": "array",
           "minItems": 2,
           "items": {
@@ -203,7 +203,7 @@
               "model_snapshot": {
                 "type": "string",
                 "maxLength": 200,
-                "description": "The immutable route to send for this generator family. Validator-side and therefore the owner's choice; miners are not pinned by the season (5.3)."
+                "description": "The immutable route to send for this generator family. Validator-side and therefore the owner's choice; miners are not pinned by the season."
               },
               "slots": {
                 "type": "integer",
@@ -224,7 +224,7 @@
           }
         },
         "store": {
-          "description": "Where generated packs live (section 7.5). Redis: write a pack once, read it many times during execution, expire it after the dedup window, and survive a restart mid-round without losing a pack whose hash is already committed.\n\n`sandbox_reachable` must be false. A laboratory that could reach the store would read the entire pack -- every problem including ones it has not been issued, and other rounds' packs. The store is the validator's; delivery to the laboratory is the runner's, as its structured input.",
+          "description": "Where generated packs live. Redis: write a pack once, read it many times during execution, expire it after the dedup window, and survive a restart mid-round without losing a pack whose hash is already committed.\n\n`sandbox_reachable` must be false. A laboratory that could reach the store would read the entire pack -- every problem including ones it has not been issued, and other rounds' packs. The store is the validator's; delivery to the laboratory is the runner's, as its structured input.",
           "type": "object",
           "additionalProperties": false,
           "required": [
@@ -268,7 +268,7 @@
       }
     },
     "criterion_weights_ppm": {
-      "description": "Section 18.2. Must sum to 1000000.",
+      "description": "Must sum to 1000000.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -317,7 +317,7 @@
       }
     },
     "rank_weights_ppm": {
-      "description": "Section 18.1's per-idea weighting: 0.40, 0.25, 0.15, 0.12, 0.08. Ordered by rank, and must sum to 1000000. Length fixes the scored portfolio size.",
+      "description": "Per-idea weighting: 0.40, 0.25, 0.15, 0.12, 0.08. Ordered by rank, and must sum to 1000000. Length fixes the scored portfolio size.",
       "type": "array",
       "items": {
         "$ref": "#/$defs/ppm"
@@ -343,7 +343,7 @@
       ],
       "properties": {
         "pairwise_weight_ppm": {
-          "description": "Section 18.3, 0.75. Pairwise is the primary signal.",
+          "description": "0.75. Pairwise is the primary signal.",
           "$ref": "#/$defs/ppm"
         },
         "pointwise_weight_ppm": {
@@ -351,7 +351,7 @@
           "$ref": "#/$defs/ppm"
         },
         "mechanism_floor_ppm": {
-          "description": "Section 18.4, 0.40. Below this, value and originality are capped.",
+          "description": "0.40. Below this, value and originality are capped.",
           "$ref": "#/$defs/ppm"
         },
         "capped_on_weak_mechanism_ppm": {
@@ -359,7 +359,7 @@
           "$ref": "#/$defs/ppm"
         },
         "daily_mean_weight_ppm": {
-          "description": "Section 18.5, 0.70.",
+          "description": "0.70.",
           "$ref": "#/$defs/ppm"
         },
         "daily_q25_weight_ppm": {
@@ -367,7 +367,7 @@
           "$ref": "#/$defs/ppm"
         },
         "rolling_short_days": {
-          "description": "Section 18.6, 7.",
+          "description": "7.",
           "type": "integer",
           "minimum": 1
         },
@@ -385,14 +385,14 @@
           "$ref": "#/$defs/ppm"
         },
         "minimum_days_for_median": {
-          "description": "Below this many valid days, the rolling score is the plain mean. Section 18.6 states there is no credibility multiplier suppressing new miners, so this must not act as one: it selects an estimator, it does not scale a score.",
+          "description": "Below this many valid days, the rolling score is the plain mean. There is no credibility multiplier suppressing new miners, so this must not act as one: it selects an estimator, it does not scale a score.",
           "type": "integer",
           "minimum": 1
         }
       }
     },
     "funnel": {
-      "description": "Section 17's evaluation funnel. Every valid response gets the cheap anchored pointwise screen; only the cohort gets the expensive pairwise tournament. These numbers decide both what a round costs the validator and how much incumbency the ranking permits, which is why they are season configuration rather than constants: cohort_random and cohort_new exist so that being outside the top cannot become self-perpetuating (17.2).",
+      "description": "The evaluation funnel. Every valid response gets the cheap anchored pointwise screen; only the cohort gets the expensive pairwise tournament. These numbers decide both what a round costs the validator and how much incumbency the ranking permits, which is why they are season configuration rather than constants: cohort_random and cohort_new exist so that being outside the top cannot become self-perpetuating.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -409,7 +409,7 @@
           "minimum": 2
         },
         "cohort_random": {
-          "description": "Randomly drawn from the rest, seeded from the day's seed so it is reproducible and unpredictable in advance. Prevents incumbent lock-in (17.2).",
+          "description": "Randomly drawn from the rest, seeded from the day's seed so it is reproducible and unpredictable in advance. Prevents incumbent lock-in.",
           "type": "integer",
           "minimum": 0
         },
@@ -419,7 +419,7 @@
           "minimum": 0
         },
         "swiss_rounds": {
-          "description": "Pairing rounds per challenge (17.3). Each is one pair of judged comparisons per pairing, in both presentation orders.",
+          "description": "Pairing rounds per challenge. Each is one pair of judged comparisons per pairing, in both presentation orders.",
           "type": "integer",
           "minimum": 1
         },
@@ -444,7 +444,7 @@
       ],
       "properties": {
         "minimum_families": {
-          "description": "Section 16.1: at least three. Two snapshots of one family are one family.",
+          "description": "At least three. Two snapshots of one family are one family.",
           "type": "integer",
           "minimum": 3
         },
@@ -510,11 +510,11 @@
           }
         },
         "degradation_accuracy_floor_ppm": {
-          "description": "Section 19: 950000 = 95%. Below this a judge is removed from the panel.",
+          "description": "950000 = 95%. Below this a judge is removed from the panel.",
           "$ref": "#/$defs/ppm"
         },
         "order_swap_inconsistency_ceiling_ppm": {
-          "description": "Section 27: 75000 = 7.5%.",
+          "description": "75000 = 7.5%.",
           "$ref": "#/$defs/ppm"
         },
         "schema_validity_floor_ppm": {
@@ -528,7 +528,7 @@
       }
     },
     "weight_allocation": {
-      "description": "Section 20. Softmax rather than proportional, so the gap between a strong and a mediocre laboratory matters more than their ratio.",
+      "description": "Softmax rather than proportional, so the gap between a strong and a mediocre laboratory matters more than their ratio.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -539,20 +539,20 @@
       ],
       "properties": {
         "temperature_ppm": {
-          "description": "Section 20.2: tau in 0.08-0.12, so 80000-120000.",
+          "description": "Tau in 0.08-0.12, so 80000-120000.",
           "$ref": "#/$defs/ppm"
         },
         "maximum_weight_ppm": {
-          "description": "Section 20.3: 150000-200000. Overflow is redistributed, which encourages multiple lab architectures over one permanent winner.",
+          "description": "150000-200000. Overflow is redistributed, which encourages multiple lab architectures over one permanent winner.",
           "$ref": "#/$defs/ppm"
         },
         "minimum_valid_challenges": {
-          "description": "Section 20.1. Being best among a handful of results is not qualification.",
+          "description": "Being best among a handful of results is not qualification.",
           "type": "integer",
           "minimum": 1
         },
         "burn_uid": {
-          "description": "Section 20.4: if no miner beats the reference floor, 100% of weight goes here. Paying nobody is a valid outcome and must be expressible.",
+          "description": "If no miner beats the reference floor, 100% of weight goes here. Paying nobody is a valid outcome and must be expressible.",
           "type": "integer",
           "minimum": 0
         },
@@ -564,7 +564,7 @@
       }
     },
     "cycle": {
-      "description": "Section 21's daily schedule, as block offsets. Expressed in blocks because section 21 requires the cycle be block-aligned rather than dependent only on wall clock: a validator whose clock runs fast would otherwise commit its challenge pack against a different randomness than its peers.",
+      "description": "The round schedule, as block offsets. Expressed in blocks because the cycle is block-aligned rather than dependent only on wall clock: a validator whose clock runs fast would otherwise commit its challenge pack against a different randomness than its peers.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -585,7 +585,7 @@
           "minimum": 1
         },
         "submission_close_offset": {
-          "description": "Negative offsets precede T0. Section 21: T-2h.",
+          "description": "Negative offsets precede T0. T-2h.",
           "type": "integer"
         },
         "salt_commit_offset": {
@@ -625,7 +625,7 @@
       }
     },
     "reference_labs": {
-      "description": "Configurations of the single reference template (section 25), by digest. The owner ships one miner template rather than four architectures; these are variations of it \u2014 different models, different temperatures \u2014 and they exist for two reasons. The first entry is the qualification floor of 20.1, pinned because a floor that could change without a rules change would silently move every miner's eligibility. The rest give 7.4 step 5's discrimination probe something to measure spread across: a probe with one configuration cannot tell an easy problem from a hard one, because condition 1 asks whether every reference produced essentially the same answer.",
+      "description": "Configurations of the single reference template, by digest. The owner ships one miner template rather than four architectures; these are variations of it \u2014 different models, different temperatures \u2014 and they exist for two reasons. The first entry is the qualification floor of 20.1, pinned because a floor that could change without a rules change would silently move every miner's eligibility. The rest give 7.4 step 5's discrimination probe something to measure spread across: a probe with one configuration cannot tell an easy problem from a hard one, because condition 1 asks whether every reference produced essentially the same answer.",
       "type": "array",
       "minItems": 2,
       "items": {
@@ -661,7 +661,7 @@
       }
     },
     "providers": {
-      "description": "One provider surface, two accounts. Every model call in the subnet goes through OpenRouter; miners spend their own key and validators spend theirs.\n\nThe separation is by *account*, not by provider, and section 3.4.4 explains why that now has to be enforced in code: with one provider a swapped key succeeds and silently bills the wrong party, where two providers would have failed on the first request.",
+      "description": "One provider surface, two accounts. Every model call in the subnet goes through OpenRouter; miners spend their own key and validators spend theirs.\n\nThe separation is by *account*, not by provider, and it has to be enforced in code: with one provider a swapped key succeeds and silently bills the wrong party, where two providers would have failed on the first request.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -718,19 +718,19 @@
               "minimum": 1
             },
             "maximum_search_calls": {
-              "description": "Search-call ceiling for one challenge. Counts against maximum_rcc as well (5.3).",
+              "description": "Search-call ceiling for one challenge. Counts against maximum_rcc as well.",
               "type": "integer",
               "minimum": 0
             },
             "maximum_wall_time_seconds": {
-              "description": "Wall-clock ceiling for one challenge (13.7), measured by the runner. A single frontier-model synthesis was measured at 214 seconds, so a laboratory making thirty calls needs either this much room or the parallelism its model manifest declares.",
+              "description": "Wall-clock ceiling for one challenge, measured by the runner. A single frontier-model synthesis was measured at 214 seconds, so a laboratory making thirty calls needs either this much room or the parallelism its model manifest declares.",
               "type": "integer",
               "minimum": 1
             }
           }
         },
         "validator_purposes": {
-          "description": "What the validator's own key may be spent on. Purpose selects the credential (section 3.4.4 point 2), so this list is what a research call is checked against and refused by -- not documentation.",
+          "description": "What the validator's own key may be spent on. Purpose selects the credential, so this list is what a research call is checked against and refused by -- not documentation.",
           "type": "array",
           "minItems": 1,
           "items": {
@@ -746,7 +746,7 @@
       }
     },
     "disclosure": {
-      "description": "Section 22. What is published after execution closes, and what stays sealed.",
+      "description": "What is published after execution closes, and what stays sealed.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -758,7 +758,7 @@
           "maxItems": 40
         },
         "judge_prompt_sealed_until_epoch_end": {
-          "description": "Section 22: the detailed judge prompt may remain sealed to reduce immediate prompt overfitting. Its hash is committed at the start regardless, so it cannot be changed while sealed.",
+          "description": "The detailed judge prompt may remain sealed to reduce immediate prompt overfitting. Its hash is committed at the start regardless, so it cannot be changed while sealed.",
           "type": "boolean"
         }
       }
@@ -780,7 +780,7 @@
           "maxLength": 100
         },
         "ineligible_uids": {
-          "description": "Section 23: owner-linked miner UIDs should be ineligible. Declared here so the exclusion is public and auditable rather than an operational habit.",
+          "description": "Owner-linked miner UIDs are ineligible. Declared here so the exclusion is public and auditable rather than an operational habit.",
           "type": "array",
           "items": {
             "type": "integer",

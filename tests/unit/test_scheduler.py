@@ -272,12 +272,11 @@ def test_a_later_step_recorded_without_its_predecessor_is_reported_as_the_predec
 
 
 def test_a_block_belongs_to_a_round_only_once_the_round_is_named():
-    """The defect this replaced. `blocks_from_epoch(block)` computed `block - epoch_start(block)`,
-    always in [0, blocks_per_day), so it never produced a negative offset — every pre-reveal phase
-    was unreachable and `phase_of` reported EXECUTING at the epoch start.
+    """A block does not belong to one round, so the round has to be named.
 
-    Both functions were individually correct. The assumption underneath was wrong: a block does not
-    belong to one round.
+    Deriving it instead — `block - epoch_start(block)`, always in [0, blocks_per_day) — never
+    produces a negative offset, which makes every pre-reveal phase unreachable and reports EXECUTING
+    at the epoch start.
     """
     config = cycle()
     assert config.offset_in(1, DAY - 450) == -450
@@ -423,7 +422,7 @@ def test_waiting_wakes_at_the_block_the_next_window_opens():
     config = cycle()
     block = 3 * DAY - 200
     progress = {3: (Step.COMMIT_SALT, Step.GENERATE)}
-    # The pack is committed and the round is in section 21's margin; the next thing due is the
+    # The pack is committed and the round is in the reveal margin; the next thing due is the
     # reveal at the epoch start, 200 blocks away.
     assert next_wake_block(cycle=config, block=block, progress=progress) == 3 * DAY
 
@@ -555,11 +554,11 @@ def test_a_mainnet_season_still_labels_rounds_by_date():
 
 
 def test_a_compressed_season_labels_every_epoch_distinctly():
-    """The defect that blocked a testnet round from ever completing.
+    """Round identity has to follow the epoch length, not the calendar.
 
-    With a 300-block epoch, twenty-four rounds fall on one calendar date. A date-only label gave all
-    of them the same id, so they collided in the commitment, in Redis and on the dashboard — and the
-    subnet could not run a round faster than a real day.
+    With a 300-block epoch, twenty-four rounds fall on one calendar date. A date-only label gives
+    all of them the same id, so they collide in the commitment, in Redis and on the dashboard, and
+    no round can run faster than a real day.
     """
     config = compressed()
     base = config.anchor_block // 300
@@ -588,8 +587,8 @@ def test_the_plausibility_check_works_on_a_compressed_label():
 
 
 def test_a_compressed_season_does_not_outrun_the_calendar_within_a_day():
-    """The failure this fixes end to end: labels advancing a day per epoch meant a validator that
-    started at noon refused to boot by mid-afternoon."""
+    """Labels advancing a day per epoch would make a validator that started at noon refuse to boot
+    by mid-afternoon."""
     from datetime import date as _date
 
     config = compressed()

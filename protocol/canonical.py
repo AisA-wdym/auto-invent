@@ -118,10 +118,9 @@ def same_digest(left: str, right: str) -> bool:
     prefix, because an on-chain commitment pays for every byte and the algorithm is fixed by the
     protocol rather than carried per commitment.
 
-    Nothing was wrong with either choice, and comparing across them with `==` was wrong everywhere
-    it happened. It happened in the bundle fetcher and in the credential-envelope check, so a
-    validator would have refused *every* submission — each with a message saying the digest was
-    malformed, which is the one explanation that is not true.
+    Neither choice is wrong, and comparing across them with `==` is wrong everywhere: a validator
+    would refuse *every* submission, each with a message saying the digest was malformed, which is
+    the one explanation that is not true.
     """
     return left.removeprefix("sha256:").lower() == right.removeprefix("sha256:").lower()
 

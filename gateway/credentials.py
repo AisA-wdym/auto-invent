@@ -25,7 +25,7 @@ So the invariant is structural rather than remembered:
 
 Point 3 is why this module holds the key and the sandbox does not. A laboratory with its own
 key could call outside the meter, spend past the ceiling, or return the key in its own output —
-and section 6.3 publishes that output.
+and disclosure publishes that output.
 """
 
 from __future__ import annotations

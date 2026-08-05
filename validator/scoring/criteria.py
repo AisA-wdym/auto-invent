@@ -106,7 +106,7 @@ class ScoringConfig:
             # the failure pairwise exists to avoid.
             raise ScoringError(
                 f"pointwise weight ({self.pointwise_weight_ppm}) exceeds pairwise "
-                f"({self.pairwise_weight_ppm}). Section 18.3 makes pairwise the primary signal; "
+                f"({self.pairwise_weight_ppm}). Pairwise is the primary signal; "
                 "pointwise is a diagnostic anchor, and inverting them would reward fluency."
             )
 
@@ -146,7 +146,7 @@ class CriterionInputs:
 def collapse_duplicates(
     per_idea_ppm: Sequence[int], lineages: Sequence[int]
 ) -> list[int]:
-    """Reduce per-idea scores to one score per distinct lineage (18.1).
+    """Reduce per-idea scores to one score per distinct lineage.
 
     `lineages[i]` is the lineage id of idea `i`; ideas the canonicalizer found semantically
     duplicate share one. The surviving score for a lineage is its **best** member, and the
@@ -173,7 +173,7 @@ def collapse_duplicates(
 
 
 def rank_weighted(per_idea_ppm: Sequence[int], rank_weights_ppm: Sequence[int]) -> int:
-    """Roll per-idea scores up to one portfolio score (18.1).
+    """Roll per-idea scores up to one portfolio score.
 
     `Q = 0.40 Q1 + 0.25 Q2 + 0.15 Q3 + 0.12 Q4 + 0.08 Q5`, positionally, with **fixed** weights.
     A portfolio with fewer surviving lineages than declared ranks scores zero for the missing
@@ -181,17 +181,17 @@ def rank_weighted(per_idea_ppm: Sequence[int], rank_weights_ppm: Sequence[int]) 
 
     ## Why the missing positions are not redistributed
 
-    An earlier version of this function redistributed the unused weight, reasoning that the
-    duplicate collapse had already removed the credit for repetition and scoring the empty slots
-    as zero would charge for it twice. That reasoning is wrong, and a test caught it by measuring
-    the outcome: a portfolio of five distinct ideas scoring 900k down to 500k earned **777,000**,
-    while five copies of one 900k idea collapsed to a single lineage and earned **900,000**.
+    Redistributing the unused weight looks defensible — the duplicate collapse has already removed
+    the credit for repetition, so scoring the empty slots as zero appears to charge for it twice.
+    Measured, it inverts the incentive: a portfolio of five distinct ideas scoring 900k down to 500k
+    earns **777,000**, while five copies of one 900k idea collapse to a single lineage and earn
+    **900,000**.
 
     Padding beat genuine diversity. Redistribution made the optimal strategy "submit one
     excellent idea and leave the rest empty", which defeats both the Top-5 requirement and the
     diversity criterion at once.
 
-    The distinction the earlier version missed is *whose* failure a missing measurement is:
+    The distinction that decides it is *whose* failure a missing measurement is:
 
     * A criterion no judge could score is the **validator's** gap. Its weight redistributes —
       a laboratory must not pay for a judge outage.
@@ -221,7 +221,7 @@ def rank_weighted(per_idea_ppm: Sequence[int], rank_weights_ppm: Sequence[int]) 
 
 
 def combine_pairwise_pointwise(inputs: CriterionInputs, config: ScoringConfig) -> int | None:
-    """`C_k = 0.75 BT_k + 0.25 AR_k` (18.3), or `None` if neither was measured.
+    """`C_k = 0.75 BT_k + 0.25 AR_k`, or `None` if neither was measured.
 
     When only one of the two exists it carries the whole weight rather than being scaled by its
     own share. Scaling would make a criterion with only a pointwise result score at most 0.25 of
@@ -245,7 +245,7 @@ def combine_pairwise_pointwise(inputs: CriterionInputs, config: ScoringConfig) -
 def _apply_mechanism_floor(
     criteria: dict[str, int], config: ScoringConfig
 ) -> tuple[dict[str, int], bool]:
-    """Cap value and originality when mechanism is below the floor (18.4).
+    """Cap value and originality when mechanism is below the floor.
 
     Applied to the combined criterion scores, not to either input: applied earlier, a weak
     pointwise mechanism could be lifted back over the floor by a strong pairwise result, and
@@ -291,7 +291,7 @@ class ChallengeScore:
 def challenge_score(
     inputs: Mapping[str, CriterionInputs], config: ScoringConfig
 ) -> ChallengeScore:
-    """`S = sum over k of w_k C_k` (18.4), with the floor applied first.
+    """`S = sum over k of w_k C_k`, with the floor applied first.
 
     Criteria that could not be measured are **omitted**, so their weight redistributes over
     the rest. That is the one behaviour in this module most likely to be got wrong by

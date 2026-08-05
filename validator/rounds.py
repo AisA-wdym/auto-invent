@@ -1,4 +1,4 @@
-"""Scoring a round: §17's funnel over what the executions produced.
+"""Scoring a round: the evaluation funnel over what the executions produced.
 
 Every piece this calls is built and unit-tested somewhere else. What was missing was the composition
 — the thing that turns 20N portfolios into one standings table — and composition is where the
@@ -7,16 +7,17 @@ they are joined.
 
 ## The funnel, and why it is a funnel
 
-Judging is the validator's largest cost, and pairwise judging is quadratic in the field. §17 spends
+Judging is the validator's largest cost, and pairwise judging is quadratic in the field. The
+funnel spends
 it in three tiers:
 
-1. **Screening** (17.1) — every valid response gets a cheap anchored pointwise score from every
+1. **Screening** — every valid response gets a cheap anchored pointwise score from every
    panel. This is the pass that has to be affordable at N × 20.
-2. **The cohort** (17.2) — the top screeners, plus a random draw, plus every laboratory with no
+2. **The cohort** — the top screeners, plus a random draw, plus every laboratory with no
    history. The last two are not fairness decoration: without them the ranking is a function of last
    week's ranking, a new entrant can never be compared against an incumbent, and incumbency becomes
    self-perpetuating on a subnet whose entire premise is that today's winner can be forked tomorrow.
-3. **The tournament** (17.3) — Swiss pairings within the cohort, both presentation orders, per
+3. **The tournament** — Swiss pairings within the cohort, both presentation orders, per
    challenge.
 
 ## Unmeasured is not zero, at every level
@@ -76,7 +77,7 @@ _log = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class FunnelConfig:
-    """§17's tiers, from the season config."""
+    """The funnel's tiers, from the season config."""
 
     cohort_top: int
     cohort_random: int

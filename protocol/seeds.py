@@ -13,7 +13,7 @@ four are present.
 
 **`date`** separates days, so yesterday's seed cannot be replayed today.
 
-**`validator_hotkey`** makes the seed per-validator. Section 7.1 requires every validator to
+**`validator_hotkey`** makes the seed per-validator. Every validator must
 generate its *own* hidden pack, and a shared seed would give every validator the same
 twenty problems — which would make the whole field predictable from any one validator.
 
@@ -36,8 +36,8 @@ then commit one salt and use another.
 
 ## Slot assignment is derived, never chosen
 
-`slot_assignments` allocates the day's twenty slots between the two generator families
-(section 7.2.1) from the seed alone. Derived rather than chosen so a validator cannot decide
+`slot_assignments` allocates the round's slots between the two generator families from the seed
+alone. Derived rather than chosen so a validator cannot decide
 after generation which family produced which surviving problem — which would let it keep
 whichever half suited it and re-roll the other.
 """
@@ -118,7 +118,7 @@ def daily_seed(
     block_hash: bytes,
     commitment: str | None = None,
 ) -> bytes:
-    """The 32-byte seed for one validator's day (architecture.md 7.3).
+    """The 32-byte seed for one validator's day.
 
     `commitment` is optional in the signature and required in practice. Passing it verifies
     the salt against what was committed before the block hash was known, which is the only

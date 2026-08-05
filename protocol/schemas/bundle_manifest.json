@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://auto-invent.ai/schemas/bundle_manifest.json",
   "title": "BundleManifest",
-  "description": "The submission unit's declaration, from architecture.md section 5.2. One complete versioned AutonomousInventionLabBundle.\n\nEvery hash here exists so that what a validator executes is provably what the miner committed. `container_digest` is a digest and never a tag: a tag is mutable, and a mutable reference means the artifact executed is not the artifact sealed.",
+  "description": "The submission unit's declaration. One complete versioned AutonomousInventionLabBundle.\n\nEvery hash here exists so that what a validator executes is provably what the miner committed. `container_digest` is a digest and never a tag: a tag is mutable, and a mutable reference means the artifact executed is not the artifact sealed.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -27,7 +27,7 @@
       "const": "AIL-3.0"
     },
     "bundle_id": {
-      "description": "`{miner_hotkey}/{lab_name}`. Namespaced by hotkey so two miners cannot collide, and stable across versions so lineage is traceable (section 22 publishes bundle lineage and forks).",
+      "description": "`{miner_hotkey}/{lab_name}`. Namespaced by hotkey so two miners cannot collide, and stable across versions so lineage is traceable (disclosure publishes bundle lineage and forks).",
       "type": "string",
       "pattern": "^[0-9a-zA-Z]+/[0-9a-zA-Z._-]+$",
       "maxLength": 200
@@ -37,7 +37,7 @@
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
     },
     "round_id": {
-      "description": "The daily round this bundle targets, as a date. The cycle is daily (section 21), so a bundle names a day rather than a season.",
+      "description": "The daily round this bundle targets, as a date. The cycle is daily, so a bundle names a day rather than a season.",
       "type": "string",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
     },
@@ -77,7 +77,7 @@
       "const": "research_portfolio_v1"
     },
     "resource_class": {
-      "description": "Requested sandbox size, from the allowed classes the owner publishes (section 3.3).",
+      "description": "Requested sandbox size, from the allowed classes the owner publishes.",
       "type": "string",
       "maxLength": 50
     },
@@ -87,7 +87,7 @@
       "maxLength": 500
     },
     "credential_envelope_digest": {
-      "description": "Content address of the sealed OpenRouter credential envelope (architecture.md section 5.4.1). The digest is here so the manifest commits to which envelope belongs to it; the envelope itself is a separate sealed object.\n\nSeparate rather than inline, and the separation is the control: section 6.3 publishes this manifest after execution closes, and a credential inside it would be published with it. A distinct object can be excluded by construction -- the publication path never reads it -- rather than by a filter someone must remember to keep correct.",
+      "description": "Content address of the sealed OpenRouter credential envelope. The digest is here so the manifest commits to which envelope belongs to it; the envelope itself is a separate sealed object.\n\nSeparate rather than inline, and the separation is the control: disclosure publishes this manifest after execution closes, and a credential inside it would be published with it. A distinct object can be excluded by construction -- the publication path never reads it -- rather than by a filter someone must remember to keep correct.",
       "$ref": "#/$defs/hash"
     }
   },

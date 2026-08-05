@@ -6,9 +6,8 @@ whatever its tests say.
 
 `--check` starts nothing and calls nothing external. It builds the whole object graph, asserts
 every model in the season config is snapshot-pinned, and exits. That is the difference between
-"a call path exists" and "the call path works": the reachability gate proves the first, this
-proves the second, and the predecessor shipped a defect that satisfied the first and failed the
-second.
+"a call path exists" and "the call path works": the reachability gate proves the first and this
+proves the second.
 """
 
 from __future__ import annotations

@@ -79,7 +79,7 @@ def test_a_tie_is_not_discarded():
 
 
 # --------------------------------------------------------------------------
-# Reproducibility: the property section 27 measures
+# Reproducibility: the property the measurement gates check
 # --------------------------------------------------------------------------
 
 

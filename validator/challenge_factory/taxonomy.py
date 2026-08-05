@@ -79,10 +79,9 @@ class Slot:
                 f"slot {self.index}: no critic family. A slot with no reviewer would put an "
                 "unreviewed problem into a committed pack that the whole cohort is scored on."
             )
-        # Generator and critic may be the same family. They were originally required to differ
-        # (7.2.2), and the owner has since decided the critique should not reach across model
-        # families — so the season config supplies `critic_family` and this only checks that one
-        # exists. See `critic.py` for what that costs.
+        # Generator and critic may be the same family: the season config supplies
+        # `critic_family`, and this only checks that one exists. See `critic.py` for what a
+        # same-family critique costs.
 
 
 @dataclass(frozen=True, slots=True)

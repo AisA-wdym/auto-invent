@@ -169,7 +169,7 @@ def test_multiple_missing_fields_are_reported_together():
 
 
 def test_an_undeclared_model_fails():
-    """The manifest closes at submission (5.3), so an undeclared model was chosen after."""
+    """The manifest closes at submission, so an undeclared model was chosen after."""
     result = report(declared_models={})
     assert Gate.UNDECLARED_MODEL in result.failed_gates()
 

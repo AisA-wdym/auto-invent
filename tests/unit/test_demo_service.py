@@ -193,8 +193,8 @@ def test_an_unreadable_usage_figure_is_charged_at_the_cap():
 
 
 def test_concurrency_is_bounded_rather_than_one():
-    """A single slot was over-cautious: the validator runs four containers at once on this host, and
-    queueing everyone behind one run takes half an hour to answer three people."""
+    """The validator runs four containers at once on this host, and queueing every visitor behind
+    one run takes half an hour to answer three people."""
     assert service().config.concurrency >= 2
 
 

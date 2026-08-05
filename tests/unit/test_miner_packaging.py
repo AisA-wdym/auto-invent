@@ -1,9 +1,8 @@
 """What `ail-miner` hands over, against what the validator expects to receive.
 
-This is the seam that was broken and that nothing watched. `tests/integration/test_round_end_to_end`
-builds its artifact **by hand** in the shape `validator.submissions` wants, and the miner CLI built
-a different one — so both sides had passing tests and no submission produced by the documented
-commands could ever have been run:
+This is the seam nothing else watches. `tests/integration/test_round_end_to_end` builds its
+artifact **by hand** in the shape `validator.submissions` wants, so if the miner CLI builds a
+different one both sides pass and no submission produced by the documented commands can be run:
 
 * `submit` published `digest_object(manifest)` as `bundle_digest`, while `fetch_and_verify` checks
   the sha256 of the **downloaded bytes**. Those can never agree.

@@ -19,7 +19,7 @@ two laboratories compared on the same day were compared against the same weights
 
 Token counts come out of the response's `usage` block. That matters because RCC is charged from
 them: a count the caller supplied would let a laboratory under-report its own spend, and a count
-estimated locally would disagree with the invoice that section 27 reconciles against.
+estimated locally would disagree with the invoice reconciliation runs against.
 
 ## Every error path settles or releases
 
@@ -469,11 +469,11 @@ def _usage(raw: Any) -> dict[str, int]:
         prompt = getattr(usage, "prompt_tokens", None)
         completion = getattr(usage, "completion_tokens", None)
 
-    # A *partial* usage block is charged as conservatively as an absent one. The first version read
-    # each side with a zero default, so a provider or proxy that reported only completion tokens
-    # made every input token free — and input dominates a research prompt. Absent and partial are
-    # the same fact: we cannot measure it, and treating what we cannot measure as free is what makes
-    # it worth provoking.
+    # A *partial* usage block is charged as conservatively as an absent one. Reading each side
+    # with a zero default would make every input token free whenever a provider or proxy reported
+    # only completion tokens — and input dominates a research prompt. Absent and partial are the
+    # same fact: the usage cannot be measured, and treating what cannot be measured as free is what
+    # makes it worth provoking.
     if not isinstance(prompt, int) or isinstance(prompt, bool) or prompt < 0:
         _log.error("provider reported prompt_tokens=%r; charging %d", prompt, _UNMEASURED_IN)
         prompt = _UNMEASURED_IN

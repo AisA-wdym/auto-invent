@@ -148,7 +148,7 @@ def pack_hash(
     cannot know.
 
     The challenge bodies themselves carry `generator_family`, so the attribution is recoverable
-    *after* publication (6.3) — which is when it should be recoverable, and not before.
+    *after* publication — which is when it should be recoverable, and not before.
     """
     return digest_object(
         {

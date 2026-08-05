@@ -112,7 +112,7 @@ def _hex64(field: str, value: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class SubmissionCommitment:
-    """A miner's sealed submission (6.1). Written once per round, before the deadline."""
+    """A miner's sealed submission. Written once per round, before the deadline."""
 
     round_id: str
     bundle_digest: str
@@ -146,7 +146,7 @@ class SubmissionCommitment:
 
 @dataclass(frozen=True, slots=True)
 class SaltCommitment:
-    """A validator's precommitted salt (7.3), written before the randomness block."""
+    """A validator's precommitted salt, written before the randomness block."""
 
     round_id: str
     salt_commitment: str

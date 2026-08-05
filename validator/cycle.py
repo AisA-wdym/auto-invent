@@ -246,14 +246,10 @@ class CycleConfig:
     def offset_in(self, epoch_index: int, block: int) -> int:
         """Where a block sits relative to a given round's reveal point.
 
-        Negative before that round's reveal. This replaces an earlier `blocks_from_epoch(block)`
-        that took only a block: it computed `block - epoch_start(block) + reveal_offset`, which for
-        the example config is always in [0, 7200) — so it never produced a negative offset, every
-        pre-reveal phase was unreachable, and `phase_of` reported EXECUTING at the epoch start.
-
-        The defect was invisible because both functions were individually correct about what they
-        claimed. What was wrong was the assumption underneath: a block does not belong to one round,
-        so an offset cannot be computed from a block alone. The round has to be named.
+        Negative before that round's reveal. The round has to be named: a block does not belong to
+        one round, so an offset cannot be computed from a block alone. Deriving the round from the
+        block instead — `block - epoch_start(block) + reveal_offset` — can only return offsets in
+        [0, blocks_per_day), which makes every pre-reveal phase unreachable.
         """
         return block - self.epoch_start_of(epoch_index) + self.reveal_offset
 

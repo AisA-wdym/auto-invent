@@ -1,11 +1,10 @@
 """Loading a season config, validated against its own schema.
 
-There was a schema, a generated model with `extra="forbid"`, a `make schema` gate proving the two
-agree, and a test proving every *shipped* config validates. And nothing validated the config an
-operator actually ran: `validator/__main__.py` and `gateway/__main__.py` each did `json.loads` and
-indexed into the result.
-
-So the whole apparatus was decorative for the only input that matters. Two ways that bites:
+A schema, a generated model with `extra="forbid"` and a `make schema` gate prove that the schema
+and the model agree. None of them validates the config an operator actually runs — a `json.loads`
+followed by indexing into the result accepts anything. This module is where that validation happens,
+because without it the whole apparatus is decorative for the only input that matters. Two ways it
+bites:
 
 **A field that does nothing.** `netuid` is not in the schema — the subnet is chosen by `--netuid`.
 An operator who writes `"netuid": 542` into the season config, which is the obvious place for it,

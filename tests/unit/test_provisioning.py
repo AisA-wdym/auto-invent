@@ -112,9 +112,8 @@ def test_a_mint_carries_a_limit_and_an_expiry(monkeypatch):
 
 
 def test_creation_answers_201_and_that_counts_as_success(monkeypatch):
-    """The defect the first live call found. `!= 200` rejected a mint that had already succeeded —
-    and raised without deleting it, leaving a live key on the miner's account whose hash the code
-    had just been handed."""
+    """Testing `!= 200` rejects a mint that has already succeeded, and raises without deleting it —
+    leaving a live key on the miner's account whose hash the code has just been handed."""
     install(monkeypatch, lambda *_: FakeResponse(201, minted_body()))
     assert mint_round_key(MANAGEMENT, name="uid7", limit_usd=25.0).key_hash == HASH
 

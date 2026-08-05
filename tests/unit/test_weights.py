@@ -185,7 +185,7 @@ def test_an_extreme_score_spread_does_not_overflow_the_exponential():
 
 
 def test_a_cap_the_field_cannot_absorb_does_not_flatten_the_ranking():
-    """The defect a test caught: below six qualifiers a 17.5% cap is unsatisfiable.
+    """Below six qualifiers a 17.5% cap is unsatisfiable.
 
     Everyone lands exactly on it, and because Bittensor renormalises the vector it receives,
     `[cap, cap]` becomes 50/50 — two laboratories with very different scores receiving identical
@@ -292,7 +292,7 @@ def test_the_candidate_order_does_not_change_the_vector():
     """Floating-point addition is not associative.
 
     Summing the softmax denominator in dict order would make the vector depend on insertion
-    order, and section 27 measures same-bundle rerun correlation.
+    order, and same-bundle rerun correlation is measured.
     """
     field = [candidate(uid, 500_001 + uid * 40_000) for uid in range(1, 9)]
     forward = allocate(field, reference_floor_ppm=FLOOR, config=CONFIG)

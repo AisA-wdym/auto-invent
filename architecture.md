@@ -636,15 +636,11 @@ Each generated problem is reviewed by a critic before it may enter a pack. The c
 declared per generator in the season config, and **each family reviews its own output**: the
 critique does not reach across model families.
 
-This supersedes an earlier version of this section, which required crossing them — a GPT-written
-problem reviewed by Claude and the reverse — on the argument that a model shares its own
-generator's blind spots. That argument is sound and the change gives it up deliberately, so what
-it costs is recorded here rather than left implicit.
-
-Measured on a live run before the change: a weak GPT generator produced two problems whose flaw
-was vagueness, and the Claude critic named it precisely ("fails to define what 'digital mechanism
-design' means operationally"). A same-family critic is closer to self-review, and self-review is
-weakest at exactly that fault, because a model finds its own phrasing clear.
+Crossing them — a GPT-written problem reviewed by Claude and the reverse — catches more, on the
+argument that a model shares its own generator's blind spots. That argument is sound, and giving it
+up is deliberate, so the cost is stated rather than left implicit: a same-family critic is closer to
+self-review, and self-review is weakest at vagueness, because a model finds its own phrasing clear
+when it knows what it meant.
 
 Two filters carry the weight the critic no longer does, and neither is affected by this change:
 
@@ -1627,11 +1623,8 @@ The owner ships **one** open reference bundle: a miner template. It is not one o
 architectures to choose between — it is the starting point every miner forks, and it is the
 qualification floor of 20.1.
 
-This supersedes an earlier version of this section, which shipped four reference bundles (a single
-agent, a planner–researcher–critic loop, independent idea islands, and an evolutionary lab). Three
-of those were demonstrations of what beating the floor could look like, and they were dropped: a
-miner does not need the owner to show them three architectures, and three unmaintained reference
-repositories decay into three misleading examples.
+One reference bundle rather than several. A miner does not need the owner to demonstrate three
+architectures, and unmaintained reference repositories decay into misleading examples.
 
 ## The template
 

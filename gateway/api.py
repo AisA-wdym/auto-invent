@@ -14,7 +14,7 @@ carry is restricted to the miner-funded set.
 
 ## What is deliberately *not* here
 
-No endpoint that returns a credential, echoes one, or reports which one paid. Section 6.3
+No endpoint that returns a credential, echoes one, or reports which one paid. Disclosure
 publishes bundle source and portfolios, and a laboratory that could read its own key could print
 it into its portfolio, at which point it is published.
 
@@ -26,7 +26,7 @@ the signed token and cannot be changed by anything reachable from the sandbox.
 
 `admit` and `close` are called by the validator's runner, not by the laboratory, and they use a
 separate bearer secret. A container that could admit its own run could re-admit it and reset its
-spend — which is exactly the "re-openable run gate" defect the predecessor shipped once.
+spend, which is what a separate secret prevents.
 """
 
 from __future__ import annotations

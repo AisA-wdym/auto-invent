@@ -233,7 +233,7 @@ def _scan_for_secrets(root: Path) -> list[Finding]:
                         f"{path.relative_to(root)} contains something shaped like a provider "
                         f"credential ({match.group(0)[:12]}…). 6.3 publishes the bundle after "
                         "execution closes, so this would become public. The credential belongs in "
-                        "the sealed envelope (5.4.1), which is never published.",
+                        "the sealed envelope, which is never published.",
                     )
                 )
                 break
@@ -289,7 +289,7 @@ ARCHIVE_MEMBERS = ("manifest.json", "credential_envelope.json", "image.tar")
 def _save_image(container_digest: str, destination: Path) -> str:
     """`docker save` the image the manifest pins, and confirm it is the image that was pinned.
 
-    The validator loads this tar and checks what came out against `container_digest` (13.4). Saving
+    The validator loads this tar and checks what came out against `container_digest`. Saving
     by digest rather than by tag is the same rule the runner enforces: a tag is mutable, and 6.1
     fixes the container at the deadline.
     """
@@ -328,11 +328,11 @@ def _pack(sealed: Path, destination: Path) -> str:
     and its capsule is filled by the miner *after* sealing — so the archive's bytes are not final
     until then, and a digest computed at seal time could never match.
 
-    That was the defect. `seal` hashed the *manifest object* with `digest_object(manifest)` and
-    `submit` published that as `bundle_digest`, while the validator hashed the downloaded file.
-    The two can never agree, so every submission this CLI produced would have been refused at
-    `fetch_and_verify` with a digest mismatch — and nothing caught it, because the end-to-end test
-    builds its archive by hand rather than through these commands.
+    Hashing the *manifest object* with `digest_object(manifest)` and publishing that as
+    `bundle_digest` cannot work: the validator hashes the downloaded file, so the two never agree
+    and every submission is refused at `fetch_and_verify` with a digest mismatch. The end-to-end
+    test builds its archive by hand rather than through these commands, so
+    `tests/unit/test_miner_packaging` is what covers this seam.
 
     Deterministic in the same way `_archive` is: sorted names, zeroed mtimes, normalised ownership.
     The digest goes on chain, so a miner must be able to rebuild the same bytes and get the same
@@ -555,7 +555,7 @@ def command_submit(args: argparse.Namespace) -> int:
     if not envelope.get("key_capsule"):
         print(
             "the credential envelope has an empty key_capsule. The validator decrypts this to run "
-            "your laboratory on your own account (3.4.2); without it your bundle cannot be run and "
+            "your laboratory on your own account; without it your bundle cannot be run and "
             "will score nothing.",
             file=sys.stderr,
         )
@@ -687,7 +687,7 @@ def _parser() -> argparse.ArgumentParser:
         type=int,
         default=50,
         help=(
-            "declared_spend_cap_usd (5.4.1). Default 50: one challenge at the season ceiling costs "
+            "declared_spend_cap_usd. Default 50: one challenge at the season ceiling costs "
             "roughly $2 against a frontier model, and a twenty-challenge day is about $40 — so 25 "
             "would have run out mid-round."
         ),

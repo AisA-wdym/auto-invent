@@ -137,7 +137,7 @@ def test_the_link_body_is_named_explicitly_not_derived():
 def test_request_and_response_content_is_not_retained():
     """The gateway must prove what was asked without archiving every prompt.
 
-    Such an archive is a standing liability, and once published at section 22 it would be a
+    Such an archive is a standing liability, and once published at disclosure it would be a
     corpus of every competitor's technique.
     """
     made = Receipt(
@@ -246,7 +246,7 @@ def test_every_purpose_has_a_declared_payer(purpose):
 
 
 def test_spend_is_reported_per_account():
-    """What reconciliation compares (3.4.4 point 3)."""
+    """What reconciliation compares."""
     made = receipt(2)
     by_owner = made.spend_by_owner()
     assert by_owner == {"miner": 20, "validator": 0}
@@ -302,7 +302,7 @@ def test_the_signing_payload_covers_the_chain_head():
 
 
 def test_measured_totals_are_computed_not_claimed():
-    """Section 9.2: validators replace self-reported usage with measured usage."""
+    """Validators replace self-reported usage with measured usage."""
     made = receipt(3)
     assert made.totals["rcc"] == 30
     assert made.totals["model_calls"] == 3

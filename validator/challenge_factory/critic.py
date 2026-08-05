@@ -5,16 +5,11 @@ the generator's, and by default it does not.
 
 ## Why not cross-family, and what that costs
 
-architecture.md 7.2.2 originally required crossing the families — a GPT-written problem reviewed by
-Claude, and the reverse — on the argument that a model shares its own generator's blind spots. The
-owner has since decided the critique should not reach across model families, so the config sets
-each family as its own critic.
-
-The cost is real and worth recording rather than glossing. Measured on a live run before the
-change: a weak GPT generator produced two problems whose flaw was vagueness ("fails to define what
-'digital mechanism design' means operationally"), and the Claude critic named it. A same-family
-critic is closer to self-review, and self-review is weakest at exactly that fault — a model finds
-its own phrasing clear because it knows what it meant.
+Crossing the families — a GPT-written problem reviewed by Claude, and the reverse — catches more,
+on the argument that a model shares its own generator's blind spots. The season config sets each
+family as its own critic instead, and the cost is worth stating plainly: a same-family critic is
+closer to self-review, and self-review is weakest at vagueness, because a model finds its own
+phrasing clear when it knows what it meant.
 
 What still catches those problems:
 
@@ -24,9 +19,9 @@ What still catches those problems:
   unaffected. A vague problem fails it on condition 3 — judges scoring the same portfolio far
   apart across repeats — and that is a *measurement* of vagueness rather than an opinion about it.
 
-So the critic is now the weaker of three filters rather than one of two. That is a defensible
-place for it, and it is why this module was not simply deleted: the critic is still one model call
-against four laboratory runs, and it rejects candidates the linter cannot see.
+So the critic is the weakest of three filters rather than one of two, which is a defensible place
+for it: it is one model call against four laboratory runs, and it rejects candidates the linter
+cannot see.
 
 ## Eight checks, reported as a list of faults rather than eight booleans
 
@@ -34,17 +29,12 @@ against four laboratory runs, and it rejects candidates the linter cannot see.
 through with a mediocre score and force the pipeline to pick a threshold, so the verdict is
 categorical: any fault named is a rejection.
 
-The *shape* of that verdict was corrected after measuring it. The first version asked for one
-boolean per check — "true if the problem is FREE of that fault" — and both families inverted it.
-The clearest evidence: a critic wrote "well-defined with clear constraints, does not reveal the
-intended solution" and simultaneously flagged `requires_physical_experiment` on a **sealed-bid
-auction** problem. There is no physical experiment in an auction; the model was answering "is this
-fault present?" using the value the prompt had defined to mean the opposite.
-
-That is a double negative across eight fields, and any single inversion rejects the candidate — so
-the error rate compounds eightfold. Asking instead for a list of the faults actually found removes
-the polarity question: a model naming `triviality` cannot mean the reverse of naming it. An empty
-list means no faults, which is also the natural way to say it.
+Asking for one boolean per check — "true if the problem is FREE of that fault" — is a double
+negative across eight fields that both model families invert in practice, flagging faults the
+problem plainly does not have. Any single inversion rejects the candidate, so the error rate
+compounds eightfold. Asking instead for a list of the faults actually found removes the polarity
+question: a model naming `triviality` cannot mean the reverse of naming it. An empty list means no
+faults, which is also the natural way to say it.
 
 ## A critic that cannot be read is not an acceptance
 

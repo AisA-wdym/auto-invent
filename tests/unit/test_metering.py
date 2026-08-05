@@ -76,9 +76,8 @@ def test_every_price_is_an_integer():
 def test_an_empty_allowlist_permits_any_declared_model():
     """The per-run token allowlist is the binding one; a season-wide list is an extra.
 
-    Built with an explicitly empty allowlist rather than from the shipped config. It used to read
-    `PRICES`, which happened to be empty — so the test asserted a property of the config rather than
-    of the code, and it started failing the moment the config was fixed.
+    Built with an explicitly empty allowlist rather than from the shipped config, which would
+    assert a property of the config rather than of the code and break the moment it changed.
     """
     empty = PriceTable(
         rcc_per_1k_in=1_000,
@@ -90,11 +89,9 @@ def test_an_empty_allowlist_permits_any_declared_model():
 
 
 def test_the_shipped_seasons_allowlist_is_not_empty():
-    """An empty season allowlist is refused at admission — "an empty allowlist read as
-    'unrestricted' would defeat gate 13.3" — so a shipped config with one means *no laboratory can
-    ever be admitted*, on mainnet as much as in a rehearsal.
-
-    Both configs shipped that way until a miner rehearsal was run against them.
+    """An empty season allowlist is refused at admission — an empty allowlist read as
+    'unrestricted' would defeat gate 13.3 — so a config carrying one means *no laboratory can ever
+    be admitted*, on mainnet as much as in a rehearsal.
     """
     import json
     import pathlib as _pathlib
@@ -129,10 +126,10 @@ def test_a_reservation_that_would_exceed_the_ceiling_is_refused():
 
 
 def test_an_outstanding_reservation_is_visible_to_a_concurrent_caller():
-    """The defect this module exists to avoid.
+    """What reserve-then-settle exists to prevent.
 
     Check-then-add lets every concurrent request see spend-under-limit and all proceed. With
-    `maximum_parallel_calls` at 16 (5.3) the ceiling overshoots by up to fifteen calls — and it
+    `maximum_parallel_calls` at 16 the ceiling overshoots by up to fifteen calls — and it
     overshoots most for the laboratory that parallelises hardest, which is to say the overshoot
     rewards exactly what the ceiling exists to bound.
     """

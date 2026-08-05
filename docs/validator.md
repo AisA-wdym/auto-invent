@@ -48,7 +48,7 @@ python -m validator --check
 ```
 
 This builds the entire object graph and validates it: the season config parses, the cycle's orderings
-hold, every judge panel satisfies §16.1's family cap, every model is snapshot-pinned, the criterion
+hold, every judge panel satisfies the family cap, every model is snapshot-pinned, the criterion
 weights sum to exactly one whole, the slot plan deals the declared counts. Then it exits.
 
 No chain, no network, no credential. Run it in CI and run it after every config change.
@@ -131,7 +131,7 @@ A config that breaks any of them is refused with a message saying which guarante
 It states the pack hash, the challenge count, and how many challenges each generator family wrote. It
 does **not** say which slot came from which family. Publishing the per-slot split before execution
 would tell a laboratory which half of the pack to expect from whom, and the point of two generator
-families is that it cannot know. The attribution becomes public at §6.3 disclosure, which is when it
+families is that it cannot know. The attribution becomes public at disclosure, which is when it
 should.
 
 ---
@@ -166,7 +166,7 @@ generation failure.
 
 ## Divergence between validators is expected
 
-§27 draws a distinction worth internalising:
+One distinction is worth internalising:
 
 | Measurement | Requirement | Why |
 |---|---|---|
@@ -207,7 +207,7 @@ reconciliation is the only check that catches what the API will not.
 **Never expose Redis to the sandbox network.** See above.
 
 **Never run a laboratory image by tag.** Only by `sha256:` digest. A tag can be repointed after the
-deadline, which is exactly what §6.1 exists to prevent. The runner refuses a tag.
+deadline, which is exactly what pinning by digest prevents. The runner refuses a tag.
 
 ---
 

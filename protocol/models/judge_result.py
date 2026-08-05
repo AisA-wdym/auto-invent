@@ -29,7 +29,7 @@ class Criterion(Enum):
 
 class Comparison(ProtocolModel):
     """
-    Blinded identifiers. The judge never learns which miner produced either side; section 14 strips identity before this stage.
+    Blinded identifiers. The judge never learns which miner produced either side; the canonicalizer strips identity before this stage.
     """
 
     model_config = ConfigDict(
@@ -47,11 +47,11 @@ class Winner(Enum):
 
 class JudgeResult(ProtocolModel):
     """
-    One judge's verdict on one pairwise comparison, from architecture.md section 16.3.
+    One judge's verdict on one pairwise comparison.
 
-    Pairwise rather than a score, because a score invites a judge to reward fluency: asked 'is this good, 1-10?' a model rates confident prose highly, while asked 'which of these two is better on mechanism?' it must find a discriminating difference. Section 18.3 makes pairwise the primary signal at 0.75 weight and keeps anchored pointwise at 0.25 as a diagnostic — the pointwise anchor is what reveals a field in which the relative winner is still poor.
+    Pairwise rather than a score, because a score invites a judge to reward fluency: asked 'is this good, 1-10?' a model rates confident prose highly, while asked 'which of these two is better on mechanism?' it must find a discriminating difference. Pairwise is the primary signal at 0.75 weight and keeps anchored pointwise at 0.25 as a diagnostic — the pointwise anchor is what reveals a field in which the relative winner is still poor.
 
-    `abstain` is a first-class outcome. A judge forced to choose when it cannot discriminate contributes noise that looks like signal, and section 19 measures order-swap inconsistency precisely to detect that.
+    `abstain` is a first-class outcome. A judge forced to choose when it cannot discriminate contributes noise that looks like signal, and order-swap inconsistency is measured precisely to detect that.
     """
 
     model_config = ConfigDict(
@@ -60,7 +60,7 @@ class JudgeResult(ProtocolModel):
     criterion: Criterion
     comparison: Comparison = Field(
         ...,
-        description='Blinded identifiers. The judge never learns which miner produced either side; section 14 strips identity before this stage.',
+        description='Blinded identifiers. The judge never learns which miner produced either side; the canonicalizer strips identity before this stage.',
     )
     winner: Winner
     confidence: confloat(ge=0.0, le=1.0) | None = None

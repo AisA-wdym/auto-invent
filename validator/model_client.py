@@ -195,7 +195,7 @@ class ModelClient:
 
         Failures are returned rather than raised because of what the callers do with them. A
         judge panel of three that lost one member must score with two and redistribute the
-        weight (16.3); a `gather` that propagated the first exception would lose the two
+        weight; a `gather` that propagated the first exception would lose the two
         verdicts that *did* arrive, and turn one model's rate limit into a criterion nobody
         scored.
         """

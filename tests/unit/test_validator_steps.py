@@ -130,12 +130,9 @@ def test_main_enters_the_loop_now_that_every_step_is_built(monkeypatch):
     def fake_chain(**_kwargs):
         # Advanced to the epoch whose label is *today*, derived from the anchor rather than assumed.
         #
-        # This used to advance to `anchor + 1_000`, which was today's epoch on the day the anchor
-        # was written and drifts a day further from it every day after. Two days later the anchor
-        # check refused — correctly — and the test failed for a reason unrelated to the loop.
-        #
-        # A test that hardcodes a block height against a dated anchor expires. Computing the height
-        # from the same two numbers the anchor is built from cannot.
+        # A test that hardcodes a block height against a dated anchor expires: the anchor check
+        # refuses it once the calendar has moved on, and the failure looks unrelated to the loop.
+        # Computing the height from the same two numbers the anchor is built from cannot expire.
         from datetime import date
 
         cycle = SEASON["cycle"]

@@ -3,10 +3,10 @@
 **A Bittensor subnet where miners submit autonomous invention laboratories, and validators pay for
 research architecture rather than for research answers.**
 
-Every day each validator generates twenty fresh research problems, runs every miner's laboratory
-against the same twenty under an identical budget, and scores the resulting portfolios. What a miner
-sells is not an idea — it is a *machine that produces ideas*, and it has to keep producing them on
-problems nobody has seen.
+Each round every validator generates a fresh pack of research problems, runs every miner's
+laboratory against the same pack under an identical budget, and scores the resulting portfolios. What
+a miner sells is not an idea — it is a *machine that produces ideas*, and it has to keep producing
+them on problems nobody has seen.
 
 ```
         ┌──────────────────────────────────────────────────────────┐
@@ -19,7 +19,7 @@ problems nobody has seen.
        │                            │                              │
        │                     commit salt (T-450)                   │
        │                     draw randomness (T-300)               │
-       │                     generate 20 problems ─────────────────┤ validator's key
+       │                     generate the pack ────────────────────┤ validator's key
        │                     commit pack hash (T-100)              │
        │                            │                              │
        └────── reveal (T+0) ──▶ run laboratory ─── RCG ────────────┤ miner's key
@@ -68,7 +68,6 @@ earns nothing ([`validator/canonicalizer/`](validator/canonicalizer/)).
 | [docs/validator.md](docs/validator.md) | running a validator |
 | [docs/incentive.md](docs/incentive.md) | working out what gets rewarded, and why |
 | [architecture.md](architecture.md) | implementing against the protocol, or reviewing it |
-| [MIGRATION.md](MIGRATION.md) | tracing what changed from the v2 design and why |
 
 ---
 
@@ -117,7 +116,7 @@ Full walkthrough: [docs/validator.md](docs/validator.md).
 protocol/            Everything both sides must agree on, byte for byte
   canonical.py         the one deterministic encoder; refuses floats in hashed objects
   fixedpoint.py        parts-per-million integer arithmetic
-  seeds.py             §7.3 daily seed, salt commitment, seeded slot assignment
+  seeds.py             round seed, salt commitment, seeded slot assignment
   receipts.py          the hash-chained record of every external call
   commitments.py       the on-chain wire format (submission, salt, pack)
   schemas/             seven JSON Schemas; protocol/models/ is generated from them
@@ -125,7 +124,7 @@ protocol/            Everything both sides must agree on, byte for byte
 chain/               The only package that imports bittensor
   client.py            ChainClient (eight methods), BittensorChain, FakeChain
 
-gateway/             The Research Compute Gateway — §3.4
+gateway/             The Research Compute Gateway
   credentials.py       two typed resolvers; purpose selects the payer
   tokens.py            HMAC session tokens: ceilings in, credential never
   metering.py          RCC pricing and a reserve-then-settle ledger
@@ -134,17 +133,17 @@ gateway/             The Research Compute Gateway — §3.4
   __main__.py          the gateway process
 
 validator/
-  cycle.py             §21's boundaries and round identity, orderings enforced at load
-  scheduler.py         §21: which step is due, decided from a block height. Pure
+  cycle.py             round boundaries and identity, orderings enforced at load
+  scheduler.py         which step is due, decided from a block height. Pure
   driver.py            the loop: poll, ask the scheduler, run, record
-  roundstate.py        §6.2, §22: the recovery record and the gated public document
-  challenge_factory/   §7: plan → generate → lint → safety → dedup → critic → probe → commit
-  sandbox/             §9, §10: hardened container and the single-request runner
-  canonicalizer/       §14: the neutral fact sheet
-  prior_art/           §15: what the search found, never a novelty claim
-  judge/               §16–17: panels, anchored screening, Swiss pairwise, Bradley-Terry
-  scoring/             §13's gates and §18's criterion, daily and rolling scores
-  weights.py           §20: softmax, cap, and the burn
+  roundstate.py        the recovery record and the gated public document
+  challenge_factory/   plan → generate → lint → safety → dedup → critic → probe → commit
+  sandbox/             hardened container and the single-request runner
+  canonicalizer/       the neutral fact sheet
+  prior_art/           what the search found, never a novelty claim
+  judge/               panels, anchored screening, Swiss pairwise, Bradley-Terry
+  scoring/             the hard gates and the scoring criterion, daily and rolling
+  weights.py           softmax, cap, and the burn
   __main__.py          the validator process
 
 miner/
@@ -161,7 +160,7 @@ tests/               unit, integration, adversarial, measurement, localnet
 
 ## The six gates
 
-Each exists because it caught a real defect that the others could not.
+Each catches a class of defect the others cannot.
 
 | Gate | What it catches | Why a test cannot |
 |---|---|---|
@@ -177,9 +176,9 @@ and walks from the three process entry points, because a guard nothing reaches i
 at runtime from a guard nobody wrote. It holds **30 enforcement points** on a live call path, and it
 is strict: adding a rule without wiring it fails the build.
 
-Both `--check` flags exist because the reachability gate proves a call path *exists* and cannot prove
-it *works*. The predecessor to this design shipped a defect that satisfied a reachability walk
-perfectly and failed on the first request.
+Both `--check` flags exist because the reachability gate proves a call path *exists* and cannot
+prove it *works*. They compose the real object graph and validate it, so a deployment can be checked
+before it is trusted with a credential.
 
 ---
 
@@ -190,18 +189,18 @@ perfectly and failed on the first request.
 | Protocol, schemas, fixed-point, seeds, receipts, commitments | complete, tested |
 | Gateway (RCG) | complete, tested, verified live against OpenRouter |
 | Chain layer | complete against bittensor 11; localnet tests pending |
-| Challenge factory (§7) | complete, tested, verified live |
-| Sandbox and hard gates (§9, §10, §13) | complete, tested |
-| Canonicalizer, prior art (§14, §15) | complete, tested |
-| Judge panels, screening, Swiss tournament (§16–17) | complete, tested |
-| Scoring and weights (§18, §20) | complete, tested |
-| Block-driven round loop | **pending** — every stage is built and reachable; what remains is the scheduler that drives them off the chain's block stream |
-| §27 measurement gates | **pending** |
+| Challenge factory | complete, tested, verified live |
+| Sandbox and hard gates | complete, tested |
+| Canonicalizer, prior art | complete, tested |
+| Judge panels, screening, Swiss tournament | complete, tested |
+| Scoring and weights | complete, tested |
+| Block-driven round loop | complete, running on testnet 542 |
+| Measurement gates | **pending** |
 
-578 tests, six gates green. Not ready for mainnet, and the criterion for that is deliberately not
-"the code runs" — it is §27: the validator must reliably rank deliberately strong, weak, copied,
-impossible and superficially novel portfolios in the right order, and a competing laboratory must
-repeatedly beat direct frontier-model use.
+885 tests, six gates green. Not ready for mainnet, and the criterion for that is deliberately not
+"the code runs": the validator must reliably rank deliberately strong, weak, copied, impossible and
+superficially novel portfolios in the right order, and a competing laboratory must repeatedly beat
+direct frontier-model use.
 
 ---
 

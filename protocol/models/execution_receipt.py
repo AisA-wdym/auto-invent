@@ -18,7 +18,7 @@ from pydantic import ConfigDict, Field, RootModel, conint, constr
 
 class Totals(ProtocolModel):
     """
-    Gateway-measured, never miner-reported. Section 9.2: validators replace self-reported usage with measured usage.
+    Gateway-measured, never miner-reported. Validators replace self-reported usage with measured usage.
     """
 
     model_config = ConfigDict(
@@ -36,7 +36,7 @@ class CredentialOwner(Enum):
     """
     Whose OpenRouter account funded these calls. Recorded on every receipt because the two accounts are the only thing separating miner research from validator judging -- and with a single provider surface, a swapped key succeeds and silently bills the wrong party rather than failing on the first request.
 
-    This field is what makes that detectable: because both accounts report usage in the same format, per-account totals can be reconciled against provider-reported usage (section 27, 100%). A call billed to the wrong account is an incident, and it is the one defect the API itself will not surface.
+    This field is what makes that detectable: because both accounts report usage in the same format, per-account totals can be reconciled against provider-reported usage. A call billed to the wrong account is an incident, and it is the one defect the API itself will not surface.
     """
 
     miner = 'miner'
@@ -45,7 +45,7 @@ class CredentialOwner(Enum):
 
 class ProviderReportedUsage(ProtocolModel):
     """
-    Usage as the provider itself reports it, for reconciliation against `totals`. Section 27 requires 100% receipt reconciliation; a discrepancy means the meter and the provider disagree about what was spent on a miner's credential, which is the one signal that catches a validator spending outside the receipted path.
+    Usage as the provider itself reports it, for reconciliation against `totals`. Receipt reconciliation must be exact; a discrepancy means the meter and the provider disagree about what was spent on a miner's credential, which is the one signal that catches a validator spending outside the receipted path.
     """
 
     model_config = ConfigDict(
@@ -58,7 +58,7 @@ class ProviderReportedUsage(ProtocolModel):
 
 class Purpose(Enum):
     """
-    What the call was for. Purpose selects the credential (section 3.4.4 point 2), so a research call cannot reach the validator resolver and a judging call cannot reach the miner resolver. Recorded so the selection is auditable after the fact, not merely asserted in code.
+    What the call was for. Purpose selects the credential, so a research call cannot reach the validator resolver and a judging call cannot reach the miner resolver. Recorded so the selection is auditable after the fact, not merely asserted in code.
     """
 
     research = 'research'
@@ -103,9 +103,9 @@ class Call(ProtocolModel):
 
 class ExecutionReceipt(ProtocolModel):
     """
-    The gateway's signed record of one laboratory's external calls (architecture.md section 3.4, section 22).
+    The gateway's signed record of one laboratory's external calls.
 
-    Hash-chained: each entry commits to the previous one, so a receipt cannot be removed or reordered after the fact without breaking every link after it. That is what makes 'budget exceeded' and 'unauthorized endpoint' hard gates (section 13) provable rather than asserted, and what makes execution-receipt reconciliation a 100% measurement gate (section 27).
+    Hash-chained: each entry commits to the previous one, so a receipt cannot be removed or reordered after the fact without breaking every link after it. That is what makes 'budget exceeded' and 'unauthorized endpoint' hard gates provable rather than asserted, and what makes execution-receipt reconciliation measurable.
 
     Request and response bodies are recorded as hashes, never as content. The gateway must be able to prove what was asked without becoming an archive of every prompt a miner ever wrote.
     """
@@ -121,7 +121,7 @@ class ExecutionReceipt(ProtocolModel):
     calls: list[Call] = Field(..., max_length=10000)
     totals: Totals = Field(
         ...,
-        description='Gateway-measured, never miner-reported. Section 9.2: validators replace self-reported usage with measured usage.',
+        description='Gateway-measured, never miner-reported. Validators replace self-reported usage with measured usage.',
     )
     chain_head: constr(pattern=r'^sha256:[0-9a-f]{64}$') = Field(
         ...,
@@ -130,13 +130,13 @@ class ExecutionReceipt(ProtocolModel):
     signature: constr(min_length=1, max_length=500)
     credential_owner: CredentialOwner = Field(
         ...,
-        description='Whose OpenRouter account funded these calls. Recorded on every receipt because the two accounts are the only thing separating miner research from validator judging -- and with a single provider surface, a swapped key succeeds and silently bills the wrong party rather than failing on the first request.\n\nThis field is what makes that detectable: because both accounts report usage in the same format, per-account totals can be reconciled against provider-reported usage (section 27, 100%). A call billed to the wrong account is an incident, and it is the one defect the API itself will not surface.',
+        description='Whose OpenRouter account funded these calls. Recorded on every receipt because the two accounts are the only thing separating miner research from validator judging -- and with a single provider surface, a swapped key succeeds and silently bills the wrong party rather than failing on the first request.\n\nThis field is what makes that detectable: because both accounts report usage in the same format, per-account totals can be reconciled against provider-reported usage. A call billed to the wrong account is an incident, and it is the one defect the API itself will not surface.',
     )
     provider_reported_usage: ProviderReportedUsage | None = Field(
         None,
-        description="Usage as the provider itself reports it, for reconciliation against `totals`. Section 27 requires 100% receipt reconciliation; a discrepancy means the meter and the provider disagree about what was spent on a miner's credential, which is the one signal that catches a validator spending outside the receipted path.",
+        description="Usage as the provider itself reports it, for reconciliation against `totals`. Receipt reconciliation must be exact; a discrepancy means the meter and the provider disagree about what was spent on a miner's credential, which is the one signal that catches a validator spending outside the receipted path.",
     )
     purpose: Purpose = Field(
         ...,
-        description='What the call was for. Purpose selects the credential (section 3.4.4 point 2), so a research call cannot reach the validator resolver and a judging call cannot reach the miner resolver. Recorded so the selection is auditable after the fact, not merely asserted in code.',
+        description='What the call was for. Purpose selects the credential, so a research call cannot reach the validator resolver and a judging call cannot reach the miner resolver. Recorded so the selection is auditable after the fact, not merely asserted in code.',
     )

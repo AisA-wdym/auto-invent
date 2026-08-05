@@ -13,11 +13,10 @@ and whose comments record which flags were added after which incident.
 of the **network**, created once by `ensure_network` as an internal bridge with the RCG attached
 and nothing else — and `assert_egress_confined` checks it rather than assuming it.
 
-This is the control that failed in the predecessor. The rule was written as "the sandbox may reach
-the gateway", implemented as a uid match on the request, and a container could therefore reach the
-gateway *as another miner* by claiming a different uid. The lesson is the shape of the fix: the
-confinement is topological (there is no route) rather than authorisational (the route exists and we
-check who you say you are).
+The shape of that control matters. Written as "the sandbox may reach the gateway" and implemented
+as a uid match on the request, a container can reach the gateway *as another miner* by claiming a
+different uid. So the confinement here is topological — there is no route — rather than
+authorisational, where the route exists and the request is asked who it claims to be.
 
 ## Why the image is pinned by digest and never by tag
 
@@ -258,9 +257,9 @@ def assert_egress_confined(network: str = DEFAULT_NETWORK) -> None:
     laboratory with an unintended route does not error — it succeeds, off the meter, and the only
     symptom is a receipt that does not reconcile.
 
-    The predecessor's version of this rule was authorisational: the gateway checked which miner a
-    request claimed to be from. A container could therefore reach the gateway as *another* miner by
-    claiming a different uid. The fix is topological, and this is the check that it holds.
+    An authorisational version of this rule — the gateway checking which miner a request claims to
+    be from — lets a container reach the gateway as *another* miner by claiming a different uid.
+    Confinement is topological instead, and this is the check that it holds.
     """
     inspect = subprocess.run(  # noqa: S603
         [

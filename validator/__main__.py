@@ -5,9 +5,8 @@ run — `tools/reachability.py` walks from this function and reports anything it
 
 ## `--check` is the half the reachability gate cannot prove
 
-The reachability gate proves a call path *exists*. It cannot prove the call path *works*: the
-predecessor shipped a defect that satisfied a reachability walk perfectly and failed on the first
-request, because the path existed and the value it read did not.
+The reachability gate proves a call path *exists*. It cannot prove the call path *works*: a path
+can be walked perfectly and still fail on the first request, because the value it reads is wrong.
 
 So `--check` builds the entire object graph — season config, cycle ordering, judge panels, price
 table, credential resolvers, taxonomy, slot plan — calls every validation function on it, and exits.
@@ -469,9 +468,8 @@ class Validator:
             # Passed explicitly rather than defaulted. 7.4 step 5 needs reference-laboratory runs
             # and a judge panel driven from the round loop; until that lands there is no probe to
             # hand over, and `build_pack` records the absence so `commit_and_store` can refuse to
-            # commit an unprobed pack. An earlier version defaulted this to None, which skipped the
-            # strongest filter in the pipeline and produced a result indistinguishable from a
-            # probed one.
+            # commit an unprobed pack. Defaulting this to None would skip the strongest filter
+            # in the pipeline and produce a result indistinguishable from a probed one.
             probe=self.probe,
         )
         _log.info(

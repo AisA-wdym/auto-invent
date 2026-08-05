@@ -85,9 +85,9 @@ class LabResult:
     measured_usage: dict[str, int] = field(default_factory=dict)
     #: Every call on the receipt chain, as `Call.link_body()` dicts. Carried here rather than left
     #: for the caller to re-fetch, because gates 13.3, 13.4, 13.5 and 13.11 are all decided from it
-    #: — and a caller that had to fetch it separately could omit it. An earlier version of the
-    #: validator's composition passed `receipt_calls=()`, which failed gate 13.11 for *every*
-    #: laboratory (a portfolio with no inference behind it) while 13.3 and 13.5 passed vacuously.
+    #: — and a caller that had to fetch it separately could omit it. Passing `receipt_calls=()`
+    #: fails gate 13.11 for *every* laboratory — a portfolio with no inference behind it — while
+    #: 13.3 and 13.5 pass vacuously.
     receipt_calls: tuple[dict[str, Any], ...] = ()
     #: What the laboratory said it used. Kept as evidence, never used as usage.
     claimed_usage: dict[str, int] = field(default_factory=dict)

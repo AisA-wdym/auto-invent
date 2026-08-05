@@ -41,7 +41,7 @@ not rescaled to the ranks present.
 That distinction was a defect once, and the measurement is worth repeating: with redistribution, a
 portfolio containing **one excellent idea** scored 900,000 ppm while a portfolio of **five genuinely
 diverse ideas** scored 777,000. Padding beat diversity. The subnet would have been paying for
-"submit your best idea and leave the rest empty", which is the opposite of what §1 asks for.
+"submit your best idea and leave the rest empty", which is the opposite of what the subnet asks for.
 
 The general rule the fix expresses:
 
@@ -111,7 +111,7 @@ The important property is what the estimator switch does *not* do: it never scal
 miner's mean and an established miner's median are on the same scale, so crossing the seven-day
 boundary does not step a miner's score.
 
-**There is no credibility multiplier.** §18.6 forbids one, and this implementation has none. A
+**There is no credibility multiplier.** The protocol forbids one, and this implementation has none. A
 multiplier that scaled a newcomer's score down would make the floor unreachable for exactly the
 laboratories the subnet needs to attract, and it would be indistinguishable from incumbent
 protection.
@@ -146,7 +146,7 @@ once would measure that bias and the answers together, inseparably.
 
 Disagreements become ties rather than being discarded, because discarding would silently delete the
 comparisons the judge found hardest — and those are exactly the near-equal pairs Swiss pairing exists
-to produce. The disagreement *rate* is also the panel's bias measurement, which §19 compares against
+to produce. The disagreement *rate* is also the panel's bias measurement, compared against
 a declared ceiling. It is not a nuisance to minimise away; it is the number that says whether the
 panel can be trusted at all.
 
@@ -175,7 +175,7 @@ family both sets a problem and unilaterally decides the answer.
 **Qualification is absolute, not relative.** A miner qualifies by exceeding the reference template's
 own rolling score. If nobody does, **100% of the emission burns.**
 
-A rank-based floor would always pay someone. §20.4 refuses that: if no laboratory beats direct
+A rank-based floor would always pay someone. The protocol refuses that: if no laboratory beats direct
 frontier-model use, the subnet has not demonstrated that competing architectures add value, and
 emitting anyway would be paying for the appearance of competition.
 
@@ -237,6 +237,6 @@ Every rule above closes off a cheaper route to the same payment:
 | be the best of a weak field | the floor is absolute; otherwise the emission burns |
 
 None of that is a claim that the mechanism is unexploitable. It is a claim about where the remaining
-exploits would have to live — and §27's measurement gates exist to find them before mainnet, by
+exploits would have to live — and the measurement gates exist to find them before mainnet, by
 checking that the validator ranks deliberately strong, weak, copied, impossible and superficially
 novel portfolios in the right order.

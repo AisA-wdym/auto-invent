@@ -254,12 +254,12 @@ def test_a_full_forty_character_revision_is_accepted():
 def test_the_bundle_manifest_requires_a_credential_envelope_digest():
     """It commits to which envelope belongs to it, and holds none of its contents.
 
-    Section 6.3 publishes the manifest; a credential inside it would be published too.
+    Disclosure publishes the manifest; a credential inside it would be published too.
     """
     assert "credential_envelope_digest" in BundleManifest.model_fields
     fields = set(BundleManifest.model_fields)
     for leaking in ("credential", "api_key", "key_capsule", "openrouter_key"):
-        assert leaking not in fields, f"{leaking} would be published by section 6.3"
+        assert leaking not in fields, f"{leaking} would be published at disclosure"
 
 
 def test_the_output_schema_is_pinned_to_the_portfolio_version():
@@ -280,7 +280,7 @@ def test_abstain_is_required_rather_than_optional():
 
 
 def test_a_judge_result_names_only_blinded_candidates():
-    """Section 14 strips identity before this stage; the type carries no miner field."""
+    """The canonicalizer strips identity before this stage; the type carries no miner field."""
     JudgeResult.model_validate(
         {
             "criterion": "mechanism",

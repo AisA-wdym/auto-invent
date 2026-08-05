@@ -28,7 +28,7 @@ than for what the chain offers.
 * `bittensor.timelock` is drand timelock encryption with round arithmetic. 6.1 needs exactly
   that, and building it on `bittensor-drand` directly would mean owning the round maths.
 * `Metagraph.commitments` returns every hotkey's commitment *with the metagraph*, including
-  whether a timelocked payload has been opened on chain. Reading submissions used to be a second
+  whether a timelocked payload has been opened on chain, so reading submissions costs no extra
   query per hotkey.
 
 ## The failure mode this interface is shaped around
@@ -383,9 +383,9 @@ class BittensorChain:
             # without it is correct *only* when we wanted mechanism 0, because on such a runtime
             # mechanism 0 is the whole subnet. For any other mechid the retry would silently return
             # a different mechanism's neuron set — a wrong cohort, scored and paid as if it were
-            # ours.  The narrowness matters: `TypeError` can come from anywhere inside the call, so
-            # the message is checked too. An earlier version caught it unconditionally and retried,
-            # which would have turned any internal TypeError into a silent read of mechanism 0.
+            # ours. The narrowness matters: `TypeError` can come from anywhere inside the call, so
+            # the message is checked too — catching it unconditionally would turn any internal
+            # TypeError into a silent read of mechanism 0.
             if self.mechid != 0 or "mechid" not in str(error):
                 raise ChainError(
                     f"could not read the metagraph for netuid {self.netuid} mechanism "
@@ -541,8 +541,8 @@ class BittensorChain:
 
         `bt.set_weights` conforms to the subnet's hyperparameters, quantises to u16, chooses
         plaintext or timelocked commit-reveal by reading whether the subnet enables it, and
-        raises `ChainError` on failure. All of that used to be ours to get right, and getting it
-        wrong is invisible: a mis-normalised vector is still a valid vector.
+        raises `ChainError` on failure. Left to the SDK because getting it wrong is invisible: a
+        mis-normalised vector is still a valid vector.
 
         Weights arrive here as ppm integers from `validator.weights`. They are handed over as
         floats because that is the SDK's parameter type and it re-quantises anyway — the integer
@@ -632,7 +632,7 @@ class BittensorChain:
         return bytes(sealed)
 
     def unseal(self, ciphertext: bytes) -> bytes:
-        """Open a timelocked payload at reveal (6.2), or raise if it is not yet openable."""
+        """Open a timelocked payload at reveal, or raise if it is not yet openable."""
         from bittensor import timelock
         from bittensor.timelock import TimelockNotReady
 

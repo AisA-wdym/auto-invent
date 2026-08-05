@@ -102,7 +102,7 @@ def test_a_different_day_gives_a_different_seed():
 
 
 def test_a_different_validator_gives_a_different_seed():
-    """Section 7.1: every validator generates its own hidden pack.
+    """Every validator generates its own hidden pack.
 
     A shared seed would make the whole field predictable from any single validator.
     """

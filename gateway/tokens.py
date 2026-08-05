@@ -26,7 +26,7 @@ its ceiling), and the run-level kill switch lives in `metering` where the spend 
 
 ## Replay across challenges is the attack this exists to stop
 
-Two laboratories are scored on the same challenge instances (7.1). A token replayable against a
+Two laboratories are scored on the same challenge instances. A token replayable against a
 second challenge would let a laboratory spend its whole round ceiling on the one challenge it
 found easiest and submit nothing elsewhere — or, worse, spend a *rival's* budget. So
 `challenge_id` is in the signed body and checked on every call, and a mismatch is refused

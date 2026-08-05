@@ -1,6 +1,6 @@
 """Minting a round-scoped provider key from a miner's management key.
 
-A miner funds their own laboratory (3.4.2), so a credential has to reach the validator. Until now
+A miner funds their own laboratory, so a credential has to reach the validator. Until now
 that credential was a runtime API key — which *is* spendable balance. This is the alternative, and
 the asymmetry is the whole argument for it:
 

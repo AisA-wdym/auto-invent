@@ -375,7 +375,7 @@ def _open_credential(
     if not envelope_path.is_file():
         raise ArtifactError(
             "the bundle contains no credential_envelope.json. The laboratory runs on the miner's "
-            "own account (3.4.2), so without it there is nothing to spend and nothing to run."
+            "own account, so without it there is nothing to spend and nothing to run."
         )
     try:
         envelope = json.loads(envelope_path.read_text())

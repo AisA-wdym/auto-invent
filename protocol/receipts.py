@@ -16,7 +16,7 @@ token counts, attempt count, and whose credential paid.
 
 Not recorded: request or response **content**. The gateway must be able to prove what was
 asked without becoming an archive of every prompt any miner ever wrote — an archive that
-would be a standing liability and, once published at section 22, a corpus of every
+would be a standing liability and, once published at disclosure, a corpus of every
 competitor's technique.
 
 ## Attempts are counted, so a retry storm is not free
@@ -29,7 +29,7 @@ disagree with the provider's invoice, which is precisely what reconciliation exi
 ## Whose credential paid is part of the evidence
 
 `credential_owner` and `purpose` are recorded on every call because a single provider surface
-means a swapped credential *succeeds* (architecture.md 3.4.4). The API will not object; only
+means a swapped credential *succeeds*. The API will not object; only
 per-account reconciliation will. So the receipt carries the claim, and reconciliation checks
 it.
 """
@@ -267,7 +267,7 @@ class Receipt:
         }
 
     def spend_by_owner(self) -> dict[str, int]:
-        """RCC per paying account, for reconciliation (architecture.md 3.4.4 point 3)."""
+        """RCC per paying account, for reconciliation."""
         by_owner: dict[str, int] = {owner.value: 0 for owner in CredentialOwner}
         for call in self.calls:
             by_owner[call.credential_owner.value] += call.rcc

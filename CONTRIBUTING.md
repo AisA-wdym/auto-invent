@@ -2,7 +2,7 @@
 
 ## The one thing to know first
 
-Six gates run on every push, and each of them exists because it caught a defect the others could not:
+Six gates run on every push, and each catches a class of defect the others cannot:
 
 ```bash
 make gates
@@ -53,11 +53,11 @@ if maximum is None:
     return GateResult(Gate.BUDGET, False, "the budget cannot be verified")
 ```
 
-That exact defect shipped and was found by an audit rather than by a test. Ask of every default:
-*if this fires, what stops being checked?*
+A default like that is not visible in a test that only exercises the populated case. Ask of every
+default: *if this fires, what stops being checked?*
 
-**Measure incentives, do not reason about them.** Two real defects here were found by computing what a
-strategy would score, not by reading the code:
+**Measure incentives, do not reason about them.** Compute what a strategy would score rather than
+reading the code and reasoning about it:
 
 - redistributing the rank weight of missing ideas made a one-idea portfolio score 900,000 ppm against
   a genuinely diverse portfolio's 777,000 — padding beat diversity;
@@ -107,14 +107,14 @@ Where a change belongs:
 
 `tests/unit` for a module in isolation, `tests/integration` for a composed surface over HTTP,
 `tests/adversarial` for an attack (assert both that it fails *and* that evidence was recorded),
-`tests/measurement` for §27's mainnet gates, `tests/localnet` for anything needing a chain.
+`tests/measurement` for the mainnet gates, `tests/localnet` for anything needing a chain.
 
 Mark a test `@pytest.mark.determinism` if it must reproduce under a different hash seed. That is most
 of the scoring path.
 
 ## Commits
 
-Say what changed and why it matters. If a change fixes a defect, say what the defect would have cost —
-that sentence is what stops the fix being reverted later as an unnecessary complication.
+Say what changed and why it matters. If a change fixes a defect, say what the defect would have
+cost — that sentence is what stops the fix being reverted later as an unnecessary complication.
 
 Use the repository's git identity for commits; do not add co-author trailers.

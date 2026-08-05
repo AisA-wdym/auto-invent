@@ -34,7 +34,7 @@ So the validator writes **two** keys per round:
 
 The dashboard reads only `round:public:*`. It cannot leak the day's problems because it never
 receives them, which is a stronger guarantee than "it is careful not to show them" and survives a
-contributor who has never read section 6.2.
+contributor who has never read the disclosure rules.
 
 `write` stores both. `read` returns the full state — the validator's own recovery path.
 `read_public` returns the gated document, and is what a dashboard's reader calls.
@@ -137,9 +137,9 @@ class RoundState:
     standings: tuple[StandingEntry, ...] = ()
     #: Present only once the phase permits it. See `public_view`.
     challenges: tuple[Mapping[str, Any], ...] = ()
-    #: Rejections by pipeline step, from generation. An operator health signal (7.4).
+    #: Rejections by pipeline step, from generation. An operator health signal.
     generation_rejections: Mapping[str, int] = field(default_factory=dict)
-    #: Whether the day's emission burned because nobody cleared the floor (20.4).
+    #: Whether the day's emission burned because nobody cleared the floor.
     burned: bool = False
     #: Which scheduler steps have completed, by `Step.name`. This is the recovery record, and it is
     #: separate from `phase` because the two answer different questions: the phase says where the
@@ -232,7 +232,7 @@ class RoundState:
             view["challenges"] = [dict(challenge) for challenge in self.challenges]
         else:
             view["challenges_withheld"] = (
-                "The day's problems are sealed until execution closes (6.2). A laboratory that "
+                "The day's problems are sealed until execution closes. A laboratory that "
                 "could read a problem it has not been given yet would end the measurement rather "
                 "than degrade it."
             )

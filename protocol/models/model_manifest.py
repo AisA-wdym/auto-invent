@@ -73,7 +73,7 @@ class Model(ProtocolModel):
 
 class ModelManifest(ProtocolModel):
     """
-    Every externally invoked model, declared before submission closes (architecture.md section 5.3). Every model is reached through OpenRouter, which is the single miner-facing provider surface, but the selection behind it is unrestricted: Anthropic, OpenAI, Google, Meta, Mistral, open-weight hosts, or a private fine-tune the miner routes through.
+    Every externally invoked model, declared before submission closes. Every model is reached through OpenRouter, which is the single miner-facing provider surface, but the selection behind it is unrestricted: Anthropic, OpenAI, Google, Meta, Mistral, open-weight hosts, or a private fine-tune the miner routes through.
 
     One surface for three reasons: model choice stays open, usage arrives in one accounting format (which is what makes an equal RCC ceiling comparable between two laboratories that chose different models), and model pinning has one place to be right rather than one per provider adapter.
 

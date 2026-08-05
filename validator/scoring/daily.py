@@ -19,9 +19,9 @@ collapses on the rest has the same mean as a consistent one, and a different qua
 
 18.6 states plainly: *"There is no credibility multiplier that suppresses new miners."*
 
-The predecessor to this design had one, and it made a new coldkey worth close to nothing for
-roughly three seasons. So the estimator switch here must not become one by accident. It
-**selects how a score is computed**; it never multiplies the result. A laboratory with three
+Such a multiplier makes a new coldkey worth close to nothing for several seasons, so the estimator
+switch here must not become one by accident. It **selects how a score is computed**; it never
+multiplies the result. A laboratory with three
 excellent days scores exactly what those three days earned — not a fraction of it pending
 seniority.
 
@@ -124,9 +124,9 @@ class DailyScore:
 def daily_score(
     challenge_scores_ppm: Sequence[int], config: DailyConfig
 ) -> DailyScore:
-    """`0.70 * mean + 0.30 * Q25` over one day's challenges (18.5).
+    """`0.70 * mean + 0.30 * Q25` over one day's challenges.
 
-    `qualifies` reports whether the day met `minimum_valid_challenges` (20.1). Reported rather
+    `qualifies` reports whether the day met `minimum_valid_challenges`. Reported rather
     than enforced here: a day below the minimum still has a real score, and whether it counts
     toward weight is a decision for the allocator, which is the only place that can see the
     whole field. Deciding it here would make a partial day silently vanish rather than being
@@ -205,13 +205,12 @@ class RollingScore:
 
 
 def rolling_score(history: ScoreHistory, config: DailyConfig) -> RollingScore:
-    """The rolling score (18.6). Selects an estimator; never scales the result.
+    """The rolling score. Selects an estimator; never scales the result.
 
     Below `minimum_days_for_median`, the plain mean of every valid day. At or above it,
     `0.60 * median(short window) + 0.40 * median(long window)`.
 
-    The switch must not become a credibility multiplier. 18.6 forbids one explicitly, and the
-    predecessor design's version made a new coldkey worth almost nothing for three seasons. So a
+    The switch must not become a credibility multiplier: the protocol forbids one explicitly. A
     laboratory with three excellent days scores exactly what those days earned — the estimator
     changes, the magnitude is not discounted for youth.
 

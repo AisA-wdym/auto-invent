@@ -19,10 +19,10 @@ capped at `maximum_run_usd` with an hour's expiry, revoked when the run ends —
 enforced by the provider and a bug here cannot exceed it. A daily total is tracked across runs too,
 because a per-run cap alone bounds one visitor, not a thousand.
 
-**Concurrency is bounded rather than serialised.** An earlier sketch had a single slot, which was
-over-cautious: the validator itself runs four containers at once on this host, and queueing everyone
-behind one run would take half an hour to answer three people. What needs bounding is the host's CPU
-and memory, so the bound is a semaphore sized like the validator's, and requests beyond it wait.
+**Concurrency is bounded rather than serialised.** The validator itself runs four containers at
+once on this host, and queueing every visitor behind one run would take half an hour to answer
+three people. What needs bounding is the host's CPU and memory, so the bound is a semaphore sized
+like the validator's, and requests beyond it wait.
 
 ## What it deliberately is not
 
@@ -172,7 +172,7 @@ class DemoService:
             raise DemoError("not the dashboard")
 
     def as_challenge(self, body: dict[str, Any]) -> dict[str, Any]:
-        """Turn a visitor's problem into the challenge shape a laboratory reads (9.1).
+        """Turn a visitor's problem into the challenge shape a laboratory reads.
 
         Same shape a generated challenge has, so the laboratory cannot tell the difference — which
         is the point: what runs here is the subnet's own loop, not a path with different rules.
@@ -266,9 +266,9 @@ class DemoService:
                 "nobody will outlive is worse than being told to come back."
             )
 
-        # Counted once, on the way in and out of the wait. An earlier version decremented inside
-        # the semaphore *and* in `finally`, so a completed run left the counter one below zero and
-        # the queue ceiling drifted upward with every request.
+        # Counted exactly once, on the way in and on the way out. Decrementing both inside the
+        # semaphore and in `finally` would take the counter below zero on every completed run, and
+        # the queue ceiling would drift upward with each request.
         self._waiting += 1
         try:
             async with self._slots:
@@ -342,9 +342,8 @@ class DemoService:
             revoke(self.config.management_key, minted.key_hash)
 
         if result.portfolio is None:
-            # The container's own stderr is included. Without it this said "no portfolio" and
-            # nothing about *why* — which is the fault this codebase keeps finding elsewhere, and
-            # I shipped it here: a message that names the symptom and withholds the cause.
+            # The container's own stderr is included, so the message names the cause rather than
+            # only the symptom.
             tail = (result.stderr_tail or "").strip().splitlines()
             because = tail[-1][:300] if tail else "the container wrote nothing to stderr"
             _log.error(

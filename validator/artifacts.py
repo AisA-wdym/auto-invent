@@ -376,10 +376,9 @@ def load_image(image_tar: Path, *, expected_digest: str, timeout: float = 600.0)
 
     observed = inspected.stdout.strip()
     if not same_digest(observed, expected_digest):
-        # Refused, and deliberately *not* removed. An earlier version ran `docker image rm --force`
-        # here, and the end-to-end test caught what that means: `docker load` of an image already in
-        # the daemon is a no-op returning the existing reference, so removing it deletes an image
-        # that was there for another reason. A miner could ship a copy of the reference
+        # Refused, and deliberately *not* removed. `docker load` of an image already in the daemon
+        # is a no-op returning the existing reference, so removing it here would delete an image
+        # that was there for another reason: a miner could ship a copy of the reference
         # laboratory's own image with a deliberately wrong manifest digest and delete the image that
         # sets the qualification floor.
         #

@@ -456,7 +456,7 @@ def test_an_unreadable_model_manifest_declares_nothing(tmp_path):
 
 
 def test_the_scaffolds_own_manifest_is_readable_by_the_validator(tmp_path):
-    """The seam between `ail-miner init` and the validator. Both sides shipped, and disagreed."""
+    """The seam between `ail-miner init` and the validator, which nothing else covers."""
     from miner.reference.template import scaffold
     from validator.execution import declared_models
 
@@ -624,14 +624,12 @@ def artifact(tmp_path, *, manifest: dict, source: bytes = b"src", image: bytes =
 
 
 def test_the_commitment_binds_the_manifest_not_the_tarball_bytes(tmp_path):
-    """The defect that made the subnet unable to run one laboratory.
+    """What the on-chain digest commits to.
 
-    `ail-miner submit` publishes `digest_object(manifest)`. The validator was passing that to a
-    function that hashed the *downloaded archive*, which can never match — so every submission was
-    refused. Fail-closed, and completely broken.
-
-    This pins the actual relationship, and it pins it in the direction that would have caught the
-    bug: the artifact's own bytes hash to something else entirely, and that is fine.
+    `ail-miner submit` publishes `digest_object(manifest)`. Passing that to a function that hashes
+    the *downloaded archive* can never match, so every submission is refused: fail-closed, and
+    completely broken. Pinned in the direction that catches it — the artifact's own bytes hash to
+    something else entirely, and that is fine.
     """
     from protocol.canonical import digest_bytes, digest_object
 

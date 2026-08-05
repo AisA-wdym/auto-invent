@@ -110,12 +110,11 @@ _INJECTION_TARGETS = (
 #: A directive aimed at a scorer. Every pattern requires the instruction to be *addressed* — to a
 #: reader, or at the submission — rather than merely containing scoring vocabulary.
 #:
-#: The first version matched `(?:award|assign|give|rate|score)` within forty characters of
-#: `(?:maximum|full|highest|…)`, and a real portfolio failed this fatal gate on the phrase
-#: **"rate faster than the maximum"** — a sentence about rate limiting. Both words are ordinary
-#: technical English ("error rate", "sample rate", "maximum throughput"), so co-occurrence carries
-#: almost no signal. What carries signal is the *imperative*: a verb pointed at a grader, or at the
-#: thing being graded.
+#: Matching `(?:award|assign|give|rate|score)` within forty characters of
+#: `(?:maximum|full|highest|…)` fails this fatal gate on the phrase **"rate faster than the
+#: maximum"** — a sentence about rate limiting. Both words are ordinary technical English ("error
+#: rate", "sample rate", "maximum throughput"), so co-occurrence carries almost no signal. What
+#: carries signal is the *imperative*: a verb pointed at a grader, or at the thing being graded.
 #:
 #: This is the direction that matters. A missed subtle injection is neutralised anyway, because 14
 #: strips judge-directed text before judging. A false positive here invalidates an honest
@@ -404,7 +403,7 @@ def _check_models(
     if undeclared:
         problems.append(
             f"called {undeclared} without declaring them. The model manifest closes at submission "
-            "(5.3), so an undeclared model is one chosen after the deadline."
+            ", so an undeclared model is one chosen after the deadline."
         )
     if unattributed:
         problems.append(
@@ -452,14 +451,13 @@ def _ceiling(limits: Mapping[str, Any], name: str) -> int | None:
     """One declared ceiling, or None if it is absent, non-integer or non-positive.
 
     None means *unverifiable*, and every caller treats that as a gate failure. It emphatically does
-    not mean unlimited — which is what the first version of this module effectively did, by reading
-    the value with `int(limits.get(name, 0))` and then testing `if maximum and measured > maximum`.
-    A challenge with no `resource_limits` block passed gates 13.6 and 13.7 unconditionally.
+    not mean unlimited. Reading the value with `int(limits.get(name, 0))` and then testing
+    `if maximum and measured > maximum` would pass gates 13.6 and 13.7 unconditionally for a
+    challenge with no `resource_limits` block.
 
-    Nothing had ever produced such a challenge: the linter requires the block, so every *generated*
-    challenge carries it. That is exactly what made the defect worth fixing rather than shrugging at
-    — an enforcement point whose correctness depends on an upstream guarantee is enforcing that
-    guarantee's continued existence, not the rule it names.
+    The linter requires that block, so every *generated* challenge carries it — which is exactly why
+    the distinction is made here anyway: an enforcement point whose correctness depends on an
+    upstream guarantee is enforcing that guarantee's continued existence, not the rule it names.
     """
     value = limits.get(name)
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:

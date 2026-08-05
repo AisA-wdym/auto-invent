@@ -13,8 +13,8 @@ The obvious shape — and the one the production gateway this design draws from 
     response = await provider.call(...)
     ledger.add(run, response.cost)
 
-That is a time-of-check/time-of-use race. `maximum_parallel_calls` is 16 in the model manifest
-(5.3), so sixteen requests can pass the check while spend is still under the limit and *then*
+That is a time-of-check/time-of-use race. `maximum_parallel_calls` may be 16 in a model
+manifest, so sixteen requests can pass the check while spend is still under the limit and *then*
 settle, all of them. The ceiling overshoots by up to fifteen calls' worth — and it overshoots
 by more for the laboratory that parallelises hardest, which is to say the overshoot rewards
 exactly the behaviour the ceiling exists to bound.
@@ -83,7 +83,7 @@ class PriceTable:
     laboratory design.
 
     What it costs us is that the ceiling no longer bounds a miner's dollar spend. That is
-    handled where it belongs — `declared_spend_cap_usd` on the miner's own key (5.4.1), which
+    handled where it belongs — `declared_spend_cap_usd` on the miner's own key, which
     the miner controls and the protocol reconciles rather than trusts.
     """
 

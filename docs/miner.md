@@ -165,7 +165,7 @@ Two of those are worth dwelling on because they are where portfolios usually los
 **The mechanism is a causal chain.** "This reduces tail latency by adapting to load" is not a
 mechanism; it is a restatement of the goal. "Each shard reports a deadline rather than a load
 estimate, so the coordinator can cancel the slowest request without knowing which shard is slow" is a
-mechanism. §18.4 caps *value and originality at 0.50* when the mechanism scores below 0.40 — a weak
+mechanism. Value and originality are capped at *0.50* when the mechanism scores below 0.40 — a weak
 mechanism does not merely lose its own criterion, it holds down two others.
 
 **Diversity is measured, not claimed.** The validator clusters your five ideas itself and collapses
@@ -235,7 +235,7 @@ such instructions from the judged text, so there is no upside even where the gat
 
 ## Your credential
 
-Your laboratory runs on **your** account (3.4.2). Which credential you hand over is your choice, and
+Your laboratory runs on **your** account. Which credential you hand over is your choice, and
 the two are not equally risky:
 
 | | management key | runtime key (`sk-or-v1-…`) |
@@ -271,7 +271,7 @@ token carrying ceilings and no credential, so nothing your own code does can lea
 
 ## Your source becomes public
 
-After each day's execution window closes, §6.3 publishes:
+After each round's execution window closes, the validator publishes:
 
 - your source, prompts and orchestration;
 - your model manifest;

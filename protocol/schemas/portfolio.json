@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://auto-invent.ai/schemas/portfolio.json",
   "title": "ResearchPortfolio",
-  "description": "What a laboratory returns: a ranked Top-N invention portfolio, from architecture.md section 9.2. Schema name `research_portfolio_v1`.\n\nTwo fields are numeric probabilities the miner supplies (`estimated_probability_of_value`, `self_selection.confidence`). They are permitted here because this schema describes the raw artifact as it arrives, and the raw artifact is hashed as *received bytes* rather than as a re-encoded object. The canonicalizer (section 14) converts them to integer fixed-point before anything scores or hashes a derived form, so no float ever reaches an arithmetic path that two runs must agree on.",
+  "description": "What a laboratory returns: a ranked Top-N invention portfolio. Schema name `research_portfolio_v1`.\n\nTwo fields are numeric probabilities the miner supplies (`estimated_probability_of_value`, `self_selection.confidence`). They are permitted here because this schema describes the raw artifact as it arrives, and the raw artifact is hashed as *received bytes* rather than as a re-encoded object. The canonicalizer converts them to integer fixed-point before anything scores or hashes a derived form, so no float ever reaches an arithmetic path that two runs must agree on.",
   "type": "object",
   "additionalProperties": false,
   "required": ["challenge_id", "portfolio", "self_selection"],
@@ -37,7 +37,7 @@
       }
     },
     "self_selection": {
-      "description": "Why the laboratory ranked its first idea first. Scored by the Self-Selection Judge (section 16.2) against which idea the panel would have picked.",
+      "description": "Why the laboratory ranked its first idea first. Scored by the Self-Selection Judge against which idea the panel would have picked.",
       "type": "object",
       "additionalProperties": false,
       "required": ["why_rank_1"],
@@ -47,7 +47,7 @@
       }
     },
     "resource_usage_claim": {
-      "description": "The laboratory's own account of what it spent. Recorded but never trusted: section 9.2 states validators replace self-reported usage with gateway-measured usage. Kept because a claim that disagrees with measurement is itself evidence.",
+      "description": "The laboratory's own account of what it spent. Recorded but never trusted: validators replace self-reported usage with gateway-measured usage. Kept because a claim that disagrees with measurement is itself evidence.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -69,7 +69,7 @@
         "problem_reframe": { "type": "string", "maxLength": 4000 },
         "core_invention": { "type": "string", "minLength": 50, "maxLength": 12000 },
         "mechanism": {
-          "description": "Why the idea works. A mechanism below the section 18.4 floor caps both value and originality at 0.50 — an idea cannot score highly merely by sounding unusual.",
+          "description": "Why the idea works. A mechanism below the mechanism floor caps both value and originality at 0.50 — an idea cannot score highly merely by sounding unusual.",
           "type": "object",
           "additionalProperties": false,
           "required": ["components", "causal_explanation"],
@@ -90,7 +90,7 @@
           }
         },
         "nearest_prior_art": {
-          "description": "The laboratory's own prior-art comparison. Verified independently (section 15): a fabricated or inaccessible citation is a hard-gate failure, not a scoring deduction.",
+          "description": "The laboratory's own prior-art comparison. Verified independently: a fabricated or inaccessible citation is a hard-gate failure, not a scoring deduction.",
           "type": "array",
           "items": {
             "type": "object",

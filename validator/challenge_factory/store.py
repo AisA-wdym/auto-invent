@@ -147,7 +147,7 @@ def _guard_commitment(pack: StoredPack, committed_hash: str) -> None:
     if not committed_hash:
         raise StoreError(
             f"refusing to store the pack for {pack.date}: no committed hash was supplied. The "
-            "chain commitment comes first (7.5), because a store that can be edited between "
+            "chain commitment comes first, because a store that can be edited between "
             "generation and commitment makes the commitment meaningless."
         )
     if committed_hash != pack.pack_hash:
