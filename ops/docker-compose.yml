@@ -103,7 +103,7 @@ services:
       # than discovering from an empty roster.
       #
       # Never the same Redis as AI_REDIS_URL. That store holds the day's unrevealed problems, and
-      # 6.2 is the guarantee a laboratory cannot read one early.
+      # keeping them unreadable until execution closes is what the seal guarantees.
       AI_PUBLISH_REDIS_URL: ${AI_PUBLISH_REDIS_URL:-}
       AI_RUNNER_SECRET: "${AI_RUNNER_SECRET:?}"
       # The validator's *own* OpenRouter account. It was missing here, and the omission is not
