@@ -97,6 +97,14 @@ services:
       AI_HOTKEY: ${AI_HOTKEY:-default}
       AI_RCG_ENDPOINT: http://rcg:8081
       AI_REDIS_URL: redis://redis:6379/0
+      # Where the *public* round document goes, for a dashboard that cannot reach AI_REDIS_URL
+      # privately. Empty by default, and empty means the validator publishes nowhere — which is a
+      # validator that runs correctly and is invisible, so it is worth setting deliberately rather
+      # than discovering from an empty roster.
+      #
+      # Never the same Redis as AI_REDIS_URL. That store holds the day's unrevealed problems, and
+      # 6.2 is the guarantee a laboratory cannot read one early.
+      AI_PUBLISH_REDIS_URL: ${AI_PUBLISH_REDIS_URL:-}
       AI_RUNNER_SECRET: "${AI_RUNNER_SECRET:?}"
       # The validator's *own* OpenRouter account. It was missing here, and the omission is not
       # cosmetic: 5.4 makes challenge generation, critique, judging and prior art validator costs,
