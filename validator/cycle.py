@@ -148,11 +148,13 @@ class CycleConfig:
                 "randomness can grind the salt until the derived seed produces a pack it likes, "
                 "which is the whole of what committing first prevents."
             )
-        if self.randomness_offset >= self.pack_commit_offset:
+        if self.randomness_offset + 1 >= self.pack_commit_offset:
             raise CycleError(
-                f"randomness_offset ({self.randomness_offset}) is not before pack_commit_offset "
-                f"({self.pack_commit_offset}). The seed needs the randomness, so generation cannot "
-                "begin before it is drawn."
+                f"randomness_offset ({self.randomness_offset}) leaves no room before "
+                f"pack_commit_offset ({self.pack_commit_offset}). The seed needs the randomness, "
+                "so generation cannot begin before it is drawn — and not *on* it either, because "
+                "a block's hash is not final while that block is the head. Generation opens at "
+                "randomness_offset + 1, and the pack must still be committed after that."
             )
         if self.pack_commit_offset >= self.reveal_offset:
             raise CycleError(

@@ -136,11 +136,17 @@ def windows(cycle: CycleConfig) -> tuple[Window, ...]:
             "against it",
         ),
         Window(
+            # Opens one block *after* the randomness, not on it. The seed mixes the hash of the
+            # randomness block, and a block's hash is not final while that block is the head — so a
+            # step scheduled at `randomness_offset` reads the hash of the block it is standing on
+            # and is refused. Whether the driver polled on that block or the next was a race, and
+            # losing it abandoned the whole round.
             Step.GENERATE,
-            cycle.randomness_offset,
+            cycle.randomness_offset + 1,
             cycle.pack_commit_offset,
-            "generation needs the randomness, and the pack hash must be on chain before any bundle "
-            "is opened — a pack committed later could have been chosen to suit a submission",
+            "generation needs the randomness settled, and the pack hash must be on chain before "
+            "any bundle is opened — a pack committed later could have been chosen to suit a "
+            "submission",
         ),
         Window(
             Step.EXECUTE,

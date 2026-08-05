@@ -75,10 +75,16 @@ def test_the_windows_are_ordered_and_never_overlap():
     assert spans[-1].closes == cycle().round_closes()
 
 
-def test_the_only_gap_between_windows_is_section_21s_commitment_margin():
-    """`[pack_commit, reveal)` belongs to no step: the pack hash is on chain and nothing else may
-    happen. Asserted as the *only* gap, because a second one would be a block on which nothing may
-    run and nothing has expired — a round that stalls without any step being abandoned."""
+def test_the_only_gaps_between_windows_are_the_two_deliberate_ones():
+    """Two blocks belong to no step, and both are load-bearing.
+
+    `[randomness, randomness + 1)` is the block the seed's hash comes from: its hash is not final
+    while it is the head, so nothing may run on it. `[pack_commit, reveal)` is the commitment
+    margin, where the pack hash is on chain and nothing else may happen.
+
+    Asserted as the *only* gaps, because a third would be a block on which nothing may run and
+    nothing has expired — a round that stalls without any step being abandoned.
+    """
     config = cycle()
     spans = windows(config)
     gaps = [
@@ -86,7 +92,10 @@ def test_the_only_gap_between_windows_is_section_21s_commitment_margin():
         for earlier, later in zip(spans, spans[1:], strict=False)
         if earlier.closes != later.opens
     ]
-    assert gaps == [(config.pack_commit_offset, config.reveal_offset)]
+    assert gaps == [
+        (config.randomness_offset, config.randomness_offset + 1),
+        (config.pack_commit_offset, config.reveal_offset),
+    ]
 
 
 def test_a_round_in_the_commitment_margin_waits_rather_than_stalling_or_abandoning():
@@ -120,7 +129,7 @@ def test_a_window_excludes_its_closing_block():
     [
         (-450, (), Step.COMMIT_SALT),
         (-301, (), Step.COMMIT_SALT),
-        (-300, (Step.COMMIT_SALT,), Step.GENERATE),
+        (-299, (Step.COMMIT_SALT,), Step.GENERATE),
         (-101, (Step.COMMIT_SALT,), Step.GENERATE),
         (0, (Step.COMMIT_SALT, Step.GENERATE), Step.EXECUTE),
         (4_200, (Step.COMMIT_SALT, Step.GENERATE, Step.EXECUTE), Step.SCORE),
@@ -159,10 +168,11 @@ def test_before_the_first_window_the_round_waits_rather_than_abandoning():
 
 def test_a_step_finished_early_waits_for_the_next_window():
     """A salt committed in one block does not entitle the validator to generate early: generation
-    needs the randomness, which does not exist yet."""
+    needs the randomness, which does not exist yet — and it waits one block past the randomness,
+    because a block's hash is not final while that block is the head."""
     decision = at(-400, Step.COMMIT_SALT)
     assert isinstance(decision, Wait), decision
-    assert decision.until_offset == -300
+    assert decision.until_offset == -299
     assert decision.next_step is Step.GENERATE
 
 
@@ -601,3 +611,20 @@ def test_the_granularity_follows_the_epoch_length_rather_than_a_flag():
     would get collisions, which is the failure being removed."""
     assert "T" not in cycle().round_id(0)
     assert "T" in compressed().round_id(compressed().anchor_block // 300)
+
+
+def test_generation_does_not_run_on_the_block_whose_hash_it_needs():
+    """The seed mixes the hash of the randomness block, and a block's hash is not final while that
+    block is the head. Scheduled at `randomness_offset`, generation reads the hash of the block it
+    is standing on, the chain refuses it, and the round is abandoned — so whether the driver polled
+    on that block or the next decided whether the round survived."""
+    on_the_block = at(-300, Step.COMMIT_SALT)
+    assert isinstance(on_the_block, Wait), (
+        f"generation was scheduled on the randomness block itself, whose hash is not final: "
+        f"{on_the_block}"
+    )
+    assert on_the_block.until_offset == -299
+
+    one_block_later = at(-299, Step.COMMIT_SALT)
+    assert isinstance(one_block_later, Run), one_block_later
+    assert one_block_later.step is Step.GENERATE
