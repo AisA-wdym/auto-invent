@@ -966,3 +966,48 @@ def test_a_defensive_framing_must_be_near_the_term_it_excuses():
     )
     assert near.safe
     assert not far.safe
+
+
+def test_the_challenge_budget_comes_from_the_season_not_a_default():
+    """What a laboratory is told it may spend, and what the gateway enforces.
+
+    A default here is a value that looks deliberate and is not. Carried into every challenge, a
+    budget too small to buy one frontier-model call makes every laboratory refuse to start work it
+    cannot finish — and each then fails gate 13.1 with no portfolio, which reads as a field of
+    broken laboratories rather than as a budget nobody could use.
+    """
+    import json
+    import pathlib
+
+    from validator.challenge_factory.generator import GeneratorConfig
+
+    season = json.loads(
+        (pathlib.Path(__file__).resolve().parents[2] / "config/season.542.json").read_text()
+    )
+    pricing = season["providers"]["miner_pricing"]
+    config = GeneratorConfig.from_season(season)
+
+    assert config.maximum_rcc == int(pricing["maximum_rcc"])
+    assert config.maximum_search_calls == int(pricing["maximum_search_calls"])
+    assert config.maximum_wall_time_seconds == int(pricing["maximum_wall_time_seconds"])
+
+
+def test_a_budget_too_small_for_one_call_is_refused_at_load():
+    """Refused where an operator can act on it, rather than discovered from a round in which every
+    laboratory failed every gate."""
+    import copy
+    import json
+    import pathlib
+
+    import pytest
+
+    from validator.challenge_factory.generator import GeneratorConfig
+
+    season = copy.deepcopy(
+        json.loads(
+            (pathlib.Path(__file__).resolve().parents[2] / "config/season.542.json").read_text()
+        )
+    )
+    season["providers"]["miner_pricing"]["maximum_rcc"] = 400
+    with pytest.raises(ValueError, match="does not cover one frontier-model call"):
+        GeneratorConfig.from_season(season)

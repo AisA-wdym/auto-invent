@@ -138,9 +138,12 @@ class GeneratorConfig:
     allow_unprobed_packs: bool
     #: family -> its config block.
     generators: Mapping[str, Mapping[str, Any]]
-    maximum_wall_time_seconds: int = 1_800
-    maximum_rcc: int = 400
-    maximum_search_calls: int = 100
+    #: The budget written into every generated challenge. Taken from the season's miner pricing,
+    #: never defaulted: this is what the laboratory is told it may spend and what the gateway
+    #: enforces, so a placeholder here is a round in which nothing can afford to run.
+    maximum_wall_time_seconds: int
+    maximum_rcc: int
+    maximum_search_calls: int
 
     @classmethod
     def from_season(cls, season: Mapping[str, Any]) -> GeneratorConfig:
@@ -163,7 +166,38 @@ class GeneratorConfig:
             generators={
                 str(entry["family"]): dict(entry) for entry in block["generators"]
             },
+            **_budget(season),
         )
+
+
+#: What one call to a frontier model costs, in RCC, at the season's own pricing. A budget below
+#: this cannot buy a single request, so a laboratory given one has nothing to do but fail — and it
+#: fails at gate 13.1 with no portfolio, which reads as a broken laboratory rather than as a budget
+#: that was never usable.
+_ONE_CALL_RCC = 200_000
+
+
+def _budget(season: Mapping[str, Any]) -> dict[str, int]:
+    """The per-challenge budget, from the season's miner pricing.
+
+    Read here rather than defaulted on the dataclass, because a default is a value that looks
+    deliberate and is not: the challenge carries it to the laboratory, the gateway enforces it, and
+    nothing downstream compares it against what the season actually allows.
+    """
+    pricing = season["providers"]["miner_pricing"]
+    budget = {
+        "maximum_rcc": int(pricing["maximum_rcc"]),
+        "maximum_search_calls": int(pricing["maximum_search_calls"]),
+        "maximum_wall_time_seconds": int(pricing["maximum_wall_time_seconds"]),
+    }
+    if budget["maximum_rcc"] < _ONE_CALL_RCC:
+        raise ValueError(
+            f"miner_pricing.maximum_rcc is {budget['maximum_rcc']}, which does not cover one "
+            f"frontier-model call at roughly {_ONE_CALL_RCC} RCC. Every laboratory would refuse to "
+            "start work it cannot finish and fail gate 13.1 with no portfolio, which looks like a "
+            "field of broken laboratories rather than a budget nobody could use."
+        )
+    return budget
 
 
 @dataclass(frozen=True, slots=True)
